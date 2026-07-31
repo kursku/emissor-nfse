@@ -15,6 +15,7 @@ de notas e envio por e-mail.
 > aplicável, o anexo do Simples Nacional são responsabilidade de quem opera o
 > sistema e **devem ser confirmados com um contador** antes da primeira
 > emissão real. O software é fornecido **sem garantia de qualquer tipo**.
+> Detalhes em [NOTICE.md](NOTICE.md).
 
 ## Status
 
