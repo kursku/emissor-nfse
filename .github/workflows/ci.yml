@@ -1,0 +1,31 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  check:
+    # Ubuntu esta na matriz de proposito: o projeto so foi exercitado no
+    # Windows, e o contorno de OpenSSL legacy e especifico de la. O CI e o
+    # primeiro sinal honesto de que o resto do codigo roda fora do Windows.
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-latest]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          # node:sqlite e embutido a partir do Node 24 — ver ADR-0006.
+          node-version: 24
+          cache: npm
+
+      - run: npm ci
+
+      # typecheck + testes: o mesmo comando que o hook de pre-commit roda.
+      - run: npm run check

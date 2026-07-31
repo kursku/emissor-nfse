@@ -1,0 +1,11 @@
+# Segredos e dados pessoais — nunca versionar
+.env
+*.p12
+*.pfx
+
+# Saídas: XMLs, PDFs, logs e o banco com CPF/CNPJ e e-mails de clientes (LGPD)
+output/
+tmp/
+
+node_modules/
+*.log
