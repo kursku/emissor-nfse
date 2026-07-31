@@ -1,0 +1,491 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<title>Painel NFS-e</title>
+<style>
+  body { font-family: system-ui, sans-serif; max-width: 960px; margin: 2rem auto; padding: 0 1rem; background: #f6f7f9; color: #1a1a2e; }
+  h1 { font-size: 1.3rem; margin-bottom: .5rem; }
+  h2 { font-size: 1.05rem; margin: 1.2rem 0 .5rem; border-bottom: 1px solid #d0d4dc; padding-bottom: .3rem; }
+  .aviso { background: #fff3cd; border: 1px solid #ffc107; border-radius: 6px; padding: .6rem .9rem; font-size: .9rem; }
+  .selo-sim { background: #fff3cd; border: 2px solid #e67e22; border-radius: 8px; padding: .5rem 1.2rem; font-size: 1.1rem; font-weight: 700; color: #9a3412; text-align: center; margin: .8rem 0; letter-spacing: .04em; }
+  .tabs { display: flex; gap: .5rem; margin: 1rem 0 0; }
+  .tab-btn { padding: .5rem 1.2rem; border: 1px solid #c6cad2; border-bottom: none; border-radius: 6px 6px 0 0; background: #e9eaf0; cursor: pointer; font-size: .9rem; font-weight: 600; color: #555; }
+  .tab-btn.ativo { background: #fff; color: #1a1a2e; border-color: #c6cad2; }
+  .tab-pane { display: none; background: #fff; border: 1px solid #c6cad2; border-radius: 0 8px 8px 8px; padding: 1rem; }
+  .tab-pane.ativo { display: block; }
+  /* Contadores */
+  .contadores { display: flex; flex-wrap: wrap; gap: .6rem; margin-bottom: 1rem; }
+  .contador { border-radius: 8px; padding: .5rem .9rem; min-width: 90px; text-align: center; border: 1px solid transparent; }
+  .contador .label { font-size: .7rem; color: #555; text-transform: uppercase; letter-spacing: .04em; }
+  .contador .num { font-size: 1.5rem; font-weight: 700; }
+  .cnt-simulada { background: #e0f2fe; border-color: #38bdf8; }
+  .cnt-pronta { background: #dcfce7; border-color: #4ade80; }
+  .cnt-emitida { background: #d1fae5; border-color: #34d399; }
+  .cnt-erro { background: #fee2e2; border-color: #f87171; }
+  .cnt-pendente_cadastro { background: #fef9c3; border-color: #facc15; }
+  .cnt-aguardando_garantia { background: #fef3c7; border-color: #f59e0b; }
+  .cnt-excecao { background: #fce7f3; border-color: #ec4899; }
+  .cnt-total { background: #f1f5f9; border-color: #94a3b8; }
+  /* Filtros */
+  .filtros { display: flex; gap: .6rem; margin-bottom: .8rem; flex-wrap: wrap; align-items: flex-end; }
+  .filtros input, .filtros select { padding: .4rem .6rem; border: 1px solid #c6cad2; border-radius: 5px; font-size: .9rem; }
+  .filtros input[type=text] { min-width: 180px; }
+  .filtros button { padding: .4rem .9rem; border: 1px solid #c6cad2; border-radius: 5px; background: #e9eaf0; cursor: pointer; font-size: .9rem; }
+  /* Tabela */
+  table { width: 100%; border-collapse: collapse; font-size: .85rem; }
+  th { background: #f1f5f9; padding: .4rem .6rem; text-align: left; border-bottom: 2px solid #d0d4dc; font-size: .78rem; text-transform: uppercase; color: #555; letter-spacing: .04em; }
+  td { padding: .4rem .6rem; border-bottom: 1px solid #e8eaf0; vertical-align: top; }
+  tr:hover td { background: #f8f9fc; }
+  .badge { display: inline-block; padding: .15rem .5rem; border-radius: 9999px; font-size: .75rem; font-weight: 600; }
+  .s-simulada { background: #e0f2fe; color: #0369a1; }
+  .s-pronta { background: #dcfce7; color: #166534; }
+  .s-emitida { background: #d1fae5; color: #065f46; }
+  .s-erro { background: #fee2e2; color: #991b1b; }
+  .s-pendente_cadastro { background: #fef9c3; color: #713f12; }
+  .s-aguardando_garantia { background: #fef3c7; color: #78350f; }
+  .s-excecao { background: #fce7f3; color: #831843; }
+  .erro-inline { font-size: .75rem; color: #991b1b; white-space: pre-wrap; max-width: 200px; word-break: break-word; }
+  .paginacao { display: flex; gap: .4rem; margin-top: .8rem; align-items: center; font-size: .9rem; }
+  .paginacao button { padding: .3rem .7rem; border: 1px solid #c6cad2; border-radius: 4px; background: #e9eaf0; cursor: pointer; }
+  .paginacao button:disabled { background: #f1f5f9; color: #aaa; cursor: default; }
+  .paginacao .info { color: #555; }
+  /* Acoes */
+  .acao-box { display: flex; flex-direction: column; gap: .5rem; margin-bottom: 1rem; padding: .8rem; background: #f8f9fc; border: 1px solid #d0d4dc; border-radius: 8px; }
+  .acao-box .row { display: flex; gap: .6rem; align-items: center; flex-wrap: wrap; }
+  .acao-box input[type=text] { flex: 1; min-width: 260px; padding: .4rem .6rem; border: 1px solid #c6cad2; border-radius: 5px; font-size: .9rem; }
+  .btn-acao { padding: .5rem 1.1rem; border: 0; border-radius: 6px; cursor: pointer; font-size: .9rem; font-weight: 600; color: #fff; }
+  .btn-importar { background: #2563eb; }
+  .btn-importar:disabled { background: #93c5fd; cursor: wait; }
+  .btn-simular { background: #16a34a; }
+  .btn-simular:disabled { background: #86efac; cursor: wait; }
+  .acao-resultado { font-size: .82rem; font-family: ui-monospace, monospace; white-space: pre-wrap; background: #fff; border: 1px solid #d0d4dc; border-radius: 6px; padding: .6rem .8rem; max-height: 180px; overflow-y: auto; display: none; }
+  .acao-resultado.ok { border-color: #4ade80; background: #f0fdf4; }
+  .acao-resultado.erro { border-color: #f87171; background: #fef2f2; }
+  .btn-retry { padding: .2rem .6rem; font-size: .75rem; border: 1px solid #f87171; border-radius: 4px; background: #fee2e2; color: #991b1b; cursor: pointer; }
+  .btn-retry:disabled { opacity: .5; cursor: wait; }
+  /* Formulario */
+  fieldset { border: 1px solid #d0d4dc; border-radius: 8px; margin: 1rem 0; background: #fff; }
+  legend { font-weight: 600; padding: 0 .4rem; }
+  label { display: block; font-size: .8rem; margin-top: .6rem; color: #555; }
+  input, textarea { width: 100%; box-sizing: border-box; padding: .45rem; border: 1px solid #c6cad2; border-radius: 5px; font-size: .95rem; }
+  .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: .8rem; }
+  .row3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: .8rem; }
+  .btn-emitir { margin-top: 1rem; width: 100%; padding: .8rem; font-size: 1.05rem; font-weight: 600; color: #fff; background: #c0392b; border: 0; border-radius: 8px; cursor: pointer; }
+  .btn-emitir:disabled { background: #999; cursor: wait; }
+  #resultado { margin-top: 1rem; white-space: pre-wrap; font-family: ui-monospace, monospace; font-size: .8rem; background: #fff; border-radius: 8px; padding: 1rem; border: 1px solid #d0d4dc; display: none; }
+  #resultado.ok { border-color: #2e7d32; background: #e8f5e9; }
+  #resultado.erro { border-color: #c0392b; background: #fdecea; }
+  #iss { font-size: .85rem; color: #555; margin-top: .3rem; }
+</style>
+</head>
+<body>
+<h1>Painel NFS-e</h1>
+<div id="aviso-prod" class="aviso" style="display:none">Aliquota vigente: ISS 5% (desde 2026-05-20). Competencia = data de hoje.</div>
+<div id="selo-sim" class="selo-sim" style="display:none">MODO SIMULACAO -- nenhuma nota real sera enviada a SEFIN</div>
+
+<div class="tabs">
+  <button class="tab-btn ativo" onclick="showTab('acompanhamento')">Acompanhamento</button>
+  <button class="tab-btn" onclick="showTab('emissao-manual')">Emissao Manual</button>
+</div>
+
+<!-- ABA: ACOMPANHAMENTO -->
+<div id="tab-acompanhamento" class="tab-pane ativo">
+
+  <h2>Resumo</h2>
+  <div class="contadores" id="contadores">
+    <div class="contador cnt-total"><div class="label">Total</div><div class="num" id="cnt-total">--</div></div>
+    <div class="contador cnt-simulada"><div class="label">Simuladas</div><div class="num" id="cnt-simulada">--</div></div>
+    <div class="contador cnt-pronta"><div class="label">Prontas</div><div class="num" id="cnt-pronta">--</div></div>
+    <div class="contador cnt-emitida"><div class="label">Emitidas</div><div class="num" id="cnt-emitida">--</div></div>
+    <div class="contador cnt-erro"><div class="label">Erros</div><div class="num" id="cnt-erro">--</div></div>
+    <div class="contador cnt-pendente_cadastro"><div class="label">Pend. Cadastro</div><div class="num" id="cnt-pendente_cadastro">--</div></div>
+    <div class="contador cnt-aguardando_garantia"><div class="label">Aguard. Garantia</div><div class="num" id="cnt-aguardando_garantia">--</div></div>
+    <div class="contador cnt-excecao"><div class="label">Excecao</div><div class="num" id="cnt-excecao">--</div></div>
+  </div>
+
+  <h2>Acoes</h2>
+
+  <div class="acao-box">
+    <div style="font-size:.85rem;font-weight:600;color:#444">Importar relatorio Lastlink (xlsx)</div>
+    <div class="row">
+      <input type="text" id="importar-path" value="" placeholder="C:\caminho\para\sales_list.xlsx">
+      <button class="btn-acao btn-importar" id="btn-importar" onclick="doImportar()">Importar</button>
+    </div>
+    <pre class="acao-resultado" id="res-importar"></pre>
+  </div>
+
+  <div class="acao-box">
+    <div style="font-size:.85rem;font-weight:600;color:#444">Simular fila (modo simulacao -- sem envio a SEFIN)</div>
+    <div class="row">
+      <span style="font-size:.85rem;color:#555">Limite (vazio = todas):</span>
+      <input type="number" id="simular-limite" min="1" style="width:80px" placeholder="todas">
+      <button id="btn-simular" class="btn-acao btn-simular" onclick="doSimular()">Simular prontas</button>
+    </div>
+    <pre class="acao-resultado" id="res-simular"></pre>
+  </div>
+
+  <h2>Vendas</h2>
+
+  <div class="filtros">
+    <div>
+      <label style="margin:0;font-size:.78rem">Status</label>
+      <select id="filtro-status" onchange="carregarVendas(1)">
+        <option value="">-- todos --</option>
+        <option value="simulada">Simulada</option>
+        <option value="pronta">Pronta</option>
+        <option value="emitida">Emitida</option>
+        <option value="erro">Erro</option>
+        <option value="pendente_cadastro">Pendente cadastro</option>
+        <option value="aguardando_garantia">Aguardando garantia</option>
+        <option value="excecao">Excecao</option>
+      </select>
+    </div>
+    <div>
+      <label style="margin:0;font-size:.78rem">Busca (nome/email)</label>
+      <input type="text" id="filtro-q" placeholder="Buscar..." oninput="clearTimeout(window._qt);window._qt=setTimeout(()=>carregarVendas(1),300)">
+    </div>
+    <button onclick="carregarVendas(1)">Atualizar</button>
+  </div>
+
+  <div id="tabela-container">
+    <table>
+      <thead>
+        <tr>
+          <th>Data</th>
+          <th>Produto</th>
+          <th>Nome</th>
+          <th>CPF/CNPJ</th>
+          <th>Valor</th>
+          <th>Status</th>
+          <th>Erro / Acao</th>
+        </tr>
+      </thead>
+      <tbody id="tabela-body">
+        <tr><td colspan="7" style="text-align:center;color:#aaa;padding:1.5rem">Carregando...</td></tr>
+      </tbody>
+    </table>
+    <div class="paginacao">
+      <button id="pg-prev" onclick="mudarPagina(-1)" disabled>Anterior</button>
+      <span class="info" id="pg-info"></span>
+      <button id="pg-next" onclick="mudarPagina(1)" disabled>Proxima</button>
+    </div>
+  </div>
+
+</div>
+
+<!-- ABA: EMISSAO MANUAL -->
+<div id="tab-emissao-manual" class="tab-pane">
+  <div id="aviso-manual" class="aviso" style="margin-bottom:1rem">Cada clique em "Emitir" gera um documento fiscal de verdade na SEFIN Nacional.</div>
+
+  <form id="form">
+    <fieldset>
+      <legend>DPS</legend>
+      <div class="row3">
+        <div><label>nDPS (auto-incrementa)</label><input name="nDPS" required></div>
+        <div><label>Valor do servico (R$)</label><input name="vServ" type="number" step="0.01" min="0.01" required></div>
+        <div><label>ISS estimado (5%)</label><div id="iss">--</div></div>
+      </div>
+    </fieldset>
+
+    <fieldset>
+      <legend>Tomador</legend>
+      <div class="row2">
+        <div><label>CNPJ (so digitos)</label><input name="CNPJ" pattern="\d{14}" required></div>
+        <div><label>Razao social</label><input name="xNome" required></div>
+      </div>
+      <div class="row3">
+        <div><label>Cod. municipio IBGE</label><input name="cMun" pattern="\d{7}" required></div>
+        <div><label>CEP (so digitos)</label><input name="CEP" pattern="\d{8}" required></div>
+        <div><label>Bairro</label><input name="xBairro" required></div>
+      </div>
+      <div class="row3">
+        <div><label>Logradouro</label><input name="xLgr" required></div>
+        <div><label>Numero</label><input name="nro" required></div>
+        <div><label>Complemento</label><input name="xCpl"></div>
+      </div>
+      <div class="row2">
+        <div><label>Telefone</label><input name="fone"></div>
+        <div><label>E-mail</label><input name="email" type="email"></div>
+      </div>
+    </fieldset>
+
+    <fieldset>
+      <legend>Servico</legend>
+      <label>Descricao</label>
+      <textarea name="xDescServ" rows="2" required></textarea>
+      <div class="row2">
+        <div><label>cTribNac</label><input name="cTribNac" pattern="\d{6}" required></div>
+        <div><label>cNBS (9 digitos)</label><input name="cNBS" pattern="\d{9}" required></div>
+      </div>
+      <div class="row2">
+        <div><label>cIndOp</label><input name="cIndOp" required></div>
+        <div><label>cClassTrib</label><input name="cClassTrib" required></div>
+      </div>
+    </fieldset>
+
+    <button type="submit" id="btn-emitir" class="btn-emitir">Emitir NFS-e (producao real)</button>
+  </form>
+  <pre id="resultado"></pre>
+</div>
+
+<script>
+// --- Tabs ---
+function showTab(id) {
+  document.querySelectorAll('.tab-btn').forEach((b, i) => {
+    b.classList.toggle('ativo', ['acompanhamento','emissao-manual'][i] === id);
+  });
+  document.querySelectorAll('.tab-pane').forEach(p => {
+    p.classList.toggle('ativo', p.id === 'tab-' + id);
+  });
+}
+
+// --- Config ---
+let modoSimulacao = true;
+fetch('/api/config').then(r => r.json()).then(cfg => {
+  modoSimulacao = cfg.modoSimulacao;
+  if (modoSimulacao) {
+    document.getElementById('selo-sim').style.display = 'block';
+    document.getElementById('btn-emitir').disabled = true;
+    document.getElementById('btn-emitir').title = 'Desabilitado em modo simulacao (EMITIR_REAL nao esta ativo)';
+  } else {
+    document.getElementById('aviso-prod').style.display = 'block';
+  }
+});
+
+// --- Contadores ---
+function carregarResumo() {
+  fetch('/api/vendas/resumo').then(r => r.json()).then(d => {
+    ['total','simulada','pronta','emitida','erro','pendente_cadastro','aguardando_garantia','excecao'].forEach(k => {
+      const el = document.getElementById('cnt-' + k);
+      if (el) el.textContent = d[k] ?? 0;
+    });
+  });
+}
+
+// --- Tabela de vendas ---
+let paginaAtual = 1;
+let totalPaginas = 1;
+
+function badgeStatus(s) {
+  return '<span class="badge s-' + (s||'') + '">' + (s||'--') + '</span>';
+}
+
+function carregarVendas(pg) {
+  paginaAtual = pg || paginaAtual;
+  const status = document.getElementById('filtro-status').value;
+  const q = document.getElementById('filtro-q').value;
+  let url = '/api/vendas?page=' + paginaAtual;
+  if (status) url += '&status=' + encodeURIComponent(status);
+  if (q) url += '&q=' + encodeURIComponent(q);
+
+  fetch(url).then(r => r.json()).then(d => {
+    totalPaginas = d.pages || 1;
+    document.getElementById('pg-info').textContent =
+      'Pagina ' + d.page + ' de ' + totalPaginas + ' (' + d.total + ' registros)';
+    document.getElementById('pg-prev').disabled = d.page <= 1;
+    document.getElementById('pg-next').disabled = d.page >= totalPaginas;
+
+    const tbody = document.getElementById('tabela-body');
+    if (!d.vendas || d.vendas.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:#aaa;padding:1.5rem">Nenhum registro encontrado</td></tr>';
+      return;
+    }
+
+    tbody.innerHTML = d.vendas.map(v => {
+      const data = v.data_venda ? v.data_venda.slice(0,10) : '--';
+      const produto = (v.produto || '--').slice(0, 30);
+      const nome = (v.nome || '--').slice(0, 30);
+      const doc = v.cpf_cnpj || '--';
+      const valor = v.valor != null ? 'R$ ' + Number(v.valor).toFixed(2) : '--';
+      const erroCell = v.erro
+        ? '<div class="erro-inline">' + escHtml(v.erro.slice(0,120)) + '</div>'
+        : '';
+      const retryBtn = v.status === 'erro'
+        ? '<button class="btn-retry" onclick="doRetry(this,\'' + escHtml(v.id_venda) + '\')" title="Voltar para fila">Retry</button>'
+        : '';
+      return '<tr>' +
+        '<td>' + data + '</td>' +
+        '<td title="' + escHtml(v.produto||'') + '">' + escHtml(produto) + '</td>' +
+        '<td title="' + escHtml(v.nome||'') + '">' + escHtml(nome) + '</td>' +
+        '<td>' + doc + '</td>' +
+        '<td>' + valor + '</td>' +
+        '<td>' + badgeStatus(v.status) + '</td>' +
+        '<td>' + erroCell + retryBtn + '</td>' +
+        '</tr>';
+    }).join('');
+  });
+}
+
+function mudarPagina(delta) {
+  const nova = paginaAtual + delta;
+  if (nova >= 1 && nova <= totalPaginas) carregarVendas(nova);
+}
+
+function escHtml(s) {
+  return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// --- Importar ---
+async function doImportar() {
+  const path = document.getElementById('importar-path').value.trim();
+  if (!path) { alert('Informe o caminho do xlsx'); return; }
+  const btn = document.getElementById('btn-importar');
+  const out = document.getElementById('res-importar');
+  btn.disabled = true; btn.textContent = 'Importando...';
+  out.style.display = 'none'; out.className = 'acao-resultado';
+
+  try {
+    const r = await fetch('/api/importar', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ path }),
+    });
+    const j = await r.json();
+    out.style.display = 'block';
+    if (j.ok) {
+      out.className = 'acao-resultado ok';
+      out.textContent = j.resumo || 'Importacao concluida.';
+    } else {
+      out.className = 'acao-resultado erro';
+      out.textContent = j.erro + '\n' + (j.detalhes || '');
+    }
+  } catch (err) {
+    out.style.display = 'block';
+    out.className = 'acao-resultado erro';
+    out.textContent = 'Erro: ' + err.message;
+  } finally {
+    btn.disabled = false; btn.textContent = 'Importar';
+    carregarResumo(); carregarVendas(1);
+  }
+}
+
+// --- Simular ---
+async function doSimular() {
+  const limiteEl = document.getElementById('simular-limite');
+  const limite = limiteEl.value ? parseInt(limiteEl.value, 10) : undefined;
+  const btn = document.getElementById('btn-simular');
+  const out = document.getElementById('res-simular');
+  btn.disabled = true; btn.textContent = 'Simulando...';
+  out.style.display = 'none'; out.className = 'acao-resultado';
+
+  try {
+    const r = await fetch('/api/simular', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ limite }),
+    });
+    const j = await r.json();
+    out.style.display = 'block';
+    if (j.ok) {
+      out.className = 'acao-resultado ok';
+      out.textContent = j.resumo || 'Simulacao concluida.';
+    } else {
+      out.className = 'acao-resultado erro';
+      out.textContent = j.erro + '\n' + (j.detalhes || '');
+    }
+  } catch (err) {
+    out.style.display = 'block';
+    out.className = 'acao-resultado erro';
+    out.textContent = 'Erro: ' + err.message;
+  } finally {
+    btn.disabled = false; btn.textContent = 'Simular prontas';
+    carregarResumo(); carregarVendas(paginaAtual);
+  }
+}
+
+// --- Retry ---
+async function doRetry(btn, idVenda) {
+  btn.disabled = true; btn.textContent = '...';
+  try {
+    const r = await fetch('/api/retry', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id_venda: idVenda }),
+    });
+    const j = await r.json();
+    if (j.ok) {
+      carregarVendas(paginaAtual); carregarResumo();
+    } else {
+      alert(j.erro || 'Erro no retry');
+      btn.disabled = false; btn.textContent = 'Retry';
+    }
+  } catch (err) {
+    alert('Erro: ' + err.message);
+    btn.disabled = false; btn.textContent = 'Retry';
+  }
+}
+
+// --- Formulario de emissao manual ---
+const form = document.getElementById('form');
+const issEl = document.getElementById('iss');
+
+fetch('/api/defaults').then(r => r.json()).then(d => {
+  const flat = { ...d, ...d.tomador };
+  for (const el of form.elements) {
+    if (el.name && flat[el.name] !== undefined) el.value = flat[el.name];
+  }
+  atualizaIss();
+});
+
+form.vServ.addEventListener('input', atualizaIss);
+function atualizaIss() {
+  const v = parseFloat(form.vServ.value);
+  issEl.textContent = isNaN(v) ? '--' : 'R$ ' + (v * 0.05).toFixed(2);
+}
+
+form.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  if (modoSimulacao) {
+    alert('Emissao real desabilitada em modo simulacao.');
+    return;
+  }
+  const f = form.elements;
+  const payload = {
+    nDPS: f.nDPS.value.trim(),
+    vServ: parseFloat(f.vServ.value),
+    tomador: {
+      CNPJ: f.CNPJ.value.trim(), xNome: f.xNome.value.trim(),
+      cMun: f.cMun.value.trim(), CEP: f.CEP.value.trim(),
+      xLgr: f.xLgr.value.trim(), nro: f.nro.value.trim(),
+      xCpl: f.xCpl.value.trim() || undefined, xBairro: f.xBairro.value.trim(),
+      fone: f.fone.value.trim() || undefined, email: f.email.value.trim() || undefined,
+    },
+    xDescServ: f.xDescServ.value.trim(),
+    cTribNac: f.cTribNac.value.trim(), cNBS: f.cNBS.value.trim(),
+    cIndOp: f.cIndOp.value.trim(), cClassTrib: f.cClassTrib.value.trim(),
+  };
+  if (!confirm('Emitir NFS-e REAL de R$ ' + payload.vServ.toFixed(2) + ' para ' + payload.tomador.xNome + '?')) return;
+  const btn = document.getElementById('btn-emitir');
+  const out = document.getElementById('resultado');
+  btn.disabled = true; btn.textContent = 'Emitindo...';
+  out.style.display = 'block'; out.className = ''; out.textContent = 'Enviando para a SEFIN Nacional...';
+  try {
+    const r = await fetch('/api/emitir', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    const j = await r.json();
+    if (j.autorizada) {
+      out.className = 'ok';
+      out.textContent = 'NFS-e AUTORIZADA\n\nChave de acesso: ' + j.chaveAcesso +
+        '\n\n' + JSON.stringify(j.resultado, null, 2);
+      fetch('/api/defaults').then(r => r.json()).then(d => { form.nDPS.value = d.nDPS; });
+    } else {
+      out.className = 'erro';
+      out.textContent = 'NAO AUTORIZADA\n\n' + JSON.stringify(j, null, 2);
+    }
+  } catch (err) {
+    out.className = 'erro';
+    out.textContent = 'Falha de comunicacao: ' + err.message;
+  } finally {
+    btn.disabled = modoSimulacao; btn.textContent = 'Emitir NFS-e (producao real)';
+  }
+});
+
+// --- Init ---
+carregarResumo();
+carregarVendas(1);
+</script>
+</body>
+</html>

@@ -1,0 +1,40 @@
+{
+  "name": "nfse-emissor",
+  "version": "0.1.0",
+  "type": "module",
+  "private": true,
+  "description": "Emissor de NFS-e pelo padrao nacional brasileiro (Convenio NFS-e Nacional / SEFIN)",
+  "license": "MIT",
+  "keywords": [
+    "nfse",
+    "nota-fiscal",
+    "sefin",
+    "adn",
+    "convenio-nfse-nacional",
+    "brasil",
+    "fiscal"
+  ],
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "node --import tsx --test *.test.ts *.test.mjs integracoes/*.test.ts",
+    "check": "npm run typecheck && npm test",
+    "prepare": "git config core.hooksPath .githooks"
+  },
+  "bin": {
+    "nfse": "./cli.mjs"
+  },
+  "dependencies": {
+    "@nfewizard/nfse": "1.0.3",
+    "express": "^5.2.1",
+    "xlsx": "^0.18.5"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.6",
+    "@types/xml2js": "^0.4.14",
+    "tsx": "^4.20.0",
+    "typescript": "^5.4.5"
+  }
+}

@@ -1,0 +1,20 @@
+{
+  "idVenda": "cliente-exemplo-2026-01",
+  "produto": "consultoria",
+  "tomador": {
+    "CNPJ": "11222333000181",
+    "xNome": "EMPRESA EXEMPLO LTDA",
+    "end": {
+      "cMun": "3509502",
+      "CEP": "13000000",
+      "xLgr": "Rua Exemplo",
+      "nro": "100",
+      "xBairro": "Centro"
+    },
+    "email": "exemplo@exemplo.com.br"
+  },
+  "xDescServ": "Prestacao de servico de consultoria, competencia janeiro/2026.",
+  "vServ": 100.0,
+  "cTribNac": "080201",
+  "cNBS": "122051900"
+}

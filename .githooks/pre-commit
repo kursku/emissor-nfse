@@ -1,0 +1,6 @@
+#!/bin/sh
+# Blocking edge: typecheck + testes antes de qualquer commit.
+# Emergencia: git commit --no-verify (e conserte depois).
+set -e
+cd "$(dirname "$0")/.."
+npm run --silent check
