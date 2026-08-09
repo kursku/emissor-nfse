@@ -102,3 +102,38 @@ no Node 26). Isso quebra `npm test` localmente sem ter relação com o commit.
 Não promover a cada commit. Acumular um pacote coerente de mudanças
 validadas no staging (`nickgitrabbit`, histórico completo) e promover em
 lote para o público (`kursku`, histórico limpo/squash quando fizer sentido).
+
+## 7. Gotcha de valor — comissão de coprodutor na Lastlink
+
+Achado em 2026-08-09, investigando migração pra API/webhook da Lastlink.
+Registrado aqui porque é o mesmo tipo de erro silencioso que a seção 2
+descreve (passa despercebido até doer) — só que em valor fiscal, não em
+vazamento de dado.
+
+**Dois relatórios da Lastlink, dois comportamentos diferentes:**
+
+- `sales_list` (baixado manualmente, é o que `importar-lastlink.ts` usa hoje):
+  coluna "Comissão total de coprodutores" — hoje é a fatia individual
+  correta **só porque existe um único coprodutor no produto agora**. Se um
+  segundo coprodutor entrar, essa coluna vira soma de todos, não a fatia de
+  ninguém — e o código atual (`fila-helpers.ts::montarInput`,
+  `importar-lastlink.ts::normalizarVenda`) não tem como separar quem é
+  quem, porque o `sales_list` não lista o valor por coprodutor.
+- `Notas fiscais de coprodução - todo o período.xlsx` (o relatório que a
+  Lastlink manda **via API especificamente para emitir a nota**): coluna
+  "Valor total" é o valor **cheio da venda**, não a comissão de ninguém.
+  Migrar pra essa fonte sem ajustar o valor reproduziria o mesmo bug que o
+  eNotas tinha antes (nota emitida sobre dinheiro que não foi recebido).
+
+**Única fonte que separa por coprodutor de verdade:** o webhook
+(`Payment_Completed` / `Purchase_Order_Confirmed`), campo
+`Data.Commissions[].Source === "COPRODUCER"`, com `Details[]` por
+`ReceiverEmail`/`ReceiverId` e `Amount` individual. Ver
+`support.lastlink.com/pt-BR/articles/12587805` (doc de webhook).
+
+**Regra pra qualquer código futuro que emita nota de comissão de
+coprodutor nesta operadora:** nunca confiar em "Comissão total de
+coprodutores" (sales_list) nem em "Valor total" (relatório de coprodução)
+como se fossem automaticamente a fatia individual — checar sempre quantos
+coprodutores o produto tem antes de assumir. Se mais de um, a única fonte
+correta é o webhook filtrado por `ReceiverEmail`.
