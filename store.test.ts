@@ -185,3 +185,18 @@ test("gerarVendasDoMes recusa competencia sem o separador AAAA-MM", () => {
   initDb(":memory:");
   assert.throws(() => gerarVendasDoMes("2026/03"), /Competência inválida/);
 });
+
+test("gerarVendasDoMes recusa competencia com mes ou ano nao numerico", () => {
+  initDb(":memory:");
+  // Regressao: antes o guard so checava a presenca do separador "-", entao
+  // "marco-2026" passava, parseInt("marco") virava NaN e data_venda saia
+  // corrompida em silencio em vez de falhar aqui.
+  assert.throws(() => gerarVendasDoMes("marco-2026"), /Competência inválida/);
+  assert.throws(() => gerarVendasDoMes("2026-mar"), /Competência inválida/);
+});
+
+test("gerarVendasDoMes recusa mes fora do intervalo 01-12", () => {
+  initDb(":memory:");
+  assert.throws(() => gerarVendasDoMes("2026-00"), /Competência inválida/);
+  assert.throws(() => gerarVendasDoMes("2026-13"), /Competência inválida/);
+});
