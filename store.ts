@@ -518,12 +518,13 @@ export function desativarContrato(id: number): void {
  * Se a venda já existe com status 'simulada' ou 'emitida', não a regride.
  */
 export function gerarVendasDoMes(competencia: string): number {
-  const [anoStr, mesStr] = competencia.split("-");
-  if (!anoStr || !mesStr) {
+  const match = /^(\d{4})-(\d{2})$/.exec(competencia);
+  const mesCandidato = match ? parseInt(match[2], 10) : NaN;
+  if (!match || mesCandidato < 1 || mesCandidato > 12) {
     throw new Error(`Competência inválida: "${competencia}" — use formato AAAA-MM`);
   }
-  const ano = parseInt(anoStr, 10);
-  const mes = parseInt(mesStr, 10); // 1-12
+  const ano = parseInt(match[1], 10);
+  const mes = mesCandidato; // 1-12
 
   const contratos = listContratos(true);
   let novas = 0;
