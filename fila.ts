@@ -16,6 +16,7 @@
  */
 
 
+import { fileURLToPath } from 'node:url';
 import {
   initDb,
   listVendas,
@@ -28,6 +29,7 @@ import { montarDps as montarDpsPuro } from './montar-dps.js';
 import type { EmissaoInput } from './montar-dps.js';
 import { config } from './config.js';
 import { conferirDps } from './dps-xml.js';
+import { buscarMapaProduto, montarInput } from './fila-helpers.js';
 
 // ─── Constantes ────────────────────────────────────────────────────────────────
 
@@ -35,82 +37,6 @@ const MODO_REAL = process.env['EMITIR_REAL'] === '1';
 
 // Simulacao nao carrega emissor.ts nem email.ts: eles criam diretorios, trocam
 // o agente HTTPS global e exigem o certificado. Import dinamico no modo real.
-
-// ─── Helpers ──────────────────────────────────────────────────────────────────
-
-/** Remove não-dígitos e devolve string limpa */
-function soDigitos(v: string | undefined | null): string {
-  return (v ?? '').replace(/\D/g, '');
-}
-
-/** Mapeia produto do banco para os campos fiscais via mapa_produtos */
-function buscarMapaProduto(
-  db: ReturnType<typeof initDb>,
-  produto: string,
-): { ctrib_nac: string; cnbs: string; xdesc_serv: string } | null {
-  const row = db
-    .prepare('SELECT ctrib_nac, cnbs, xdesc_serv FROM mapa_produtos WHERE produto = ?')
-    .get(produto) as { ctrib_nac: string; cnbs: string; xdesc_serv: string } | undefined;
-  return row ?? null;
-}
-
-/**
- * Monta EmissaoInput a partir de uma venda do banco.
- * - tomador: CPF (11 dígitos) ou CNPJ (14 dígitos)
- * - endereço: incluído só se completo (cMun IBGE + CEP + rua + numero + bairro)
- *   A Lastlink retorna cidade/UF como texto, não código IBGE — se não houver
- *   código IBGE, o endereço é omitido inteiramente (XSD permite, minOccurs=0).
- * - nDPS em simulação: sequencial local (não persiste em `notas`)
- */
-function montarInput(
-  venda: Venda,
-  mapa: { ctrib_nac: string; cnbs: string; xdesc_serv: string },
-  nDPS: string,
-): EmissaoInput {
-  const docRaw = soDigitos(venda.cpf_cnpj);
-  const isCpf = docRaw.length === 11;
-  const isCnpj = docRaw.length === 14;
-
-  if (!isCpf && !isCnpj) {
-    throw new Error(
-      `Documento inválido para id_venda=${venda.id_venda}: "${venda.cpf_cnpj}" (normalizado: "${docRaw}", tamanho=${docRaw.length})`,
-    );
-  }
-
-  // Endereco do tomador: obrigatorio para este indicador de operacao — sem ele
-  // a SEFIN recusa a nota com E0234. So entra completo; faltando qualquer
-  // parte, a venda nao deveria ter chegado aqui (a importacao a classifica
-  // como 'pronta_sem_endereco').
-  const temEnderecoCompleto = Boolean(
-    venda.cmun && venda.cep && venda.rua && venda.numero && venda.bairro,
-  );
-
-  return {
-    nDPS,
-    tomador: {
-      ...(isCpf ? { CPF: docRaw } : { CNPJ: docRaw }),
-      xNome: venda.nome!,
-      ...(temEnderecoCompleto
-        ? {
-            end: {
-              cMun: venda.cmun!, // resolvido pelo CEP na importacao
-              CEP: soDigitos(venda.cep),
-              xLgr: venda.rua!,
-              nro: venda.numero!,
-              xBairro: venda.bairro!,
-            },
-          }
-        : {}),
-      ...(venda.email ? { email: venda.email } : {}),
-    },
-    xDescServ: mapa.xdesc_serv,
-    vServ: venda.valor!,
-    cTribNac: mapa.ctrib_nac,
-    cNBS: mapa.cnbs,
-    cIndOp: '100301',
-    cClassTrib: '000001',
-  };
-}
 
 
 // ─── Processamento de uma venda ───────────────────────────────────────────────
@@ -272,7 +198,12 @@ async function main(): Promise<void> {
   }
 }
 
-main().catch((err) => {
-  console.error('Erro fatal:', err);
-  process.exit(1);
-});
+// Só roda main() quando executado diretamente (npx tsx fila.ts) — importar o
+// módulo em teste (para os helpers puros acima) não deve disparar a fila real.
+const isMain = process.argv[1] === fileURLToPath(import.meta.url);
+if (isMain) {
+  main().catch((err) => {
+    console.error('Erro fatal:', err);
+    process.exit(1);
+  });
+}

@@ -10,6 +10,7 @@ import { fileURLToPath } from 'node:url';
 import { spawn } from 'node:child_process';
 import { DatabaseSync } from 'node:sqlite';
 import { emitirNfse, DEFAULTS, OUTPUT_DIR, EmissaoInput } from './emissor.js';
+import { mascaraDoc } from './mascara.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const NDPS_FILE = join(OUTPUT_DIR, 'ndps.json');
@@ -64,14 +65,7 @@ function runSpawn(cmd: string, args: string[], env?: NodeJS.ProcessEnv): Promise
   });
 }
 
-// --- Mascara CPF/CNPJ: 3 primeiros + 2 ultimos digitos ---
-
-function mascaraDoc(doc: string | undefined | null): string {
-  if (!doc) return '';
-  const d = doc.replace(/\D/g, '');
-  if (d.length < 5) return d;
-  return d.slice(0, 3) + '...' + d.slice(-2);
-}
+// --- Mascara CPF/CNPJ: 3 primeiros + 2 ultimos digitos — ver mascara.ts ---
 
 // --- App ---
 
@@ -301,7 +295,12 @@ app.post('/api/emitir', async (req, res) => {
   }
 });
 
+// Só sobe o listener quando executado diretamente (npx tsx server.ts) —
+// importar o módulo em teste (para mascaraDoc) não deve abrir a porta 3000.
 const PORT = 3000;
-app.listen(PORT, '127.0.0.1', () => {
-  console.log('Painel NFS-e (PRODUCAO REAL): http://localhost:' + PORT);
-});
+const isMain = process.argv[1] === fileURLToPath(import.meta.url);
+if (isMain) {
+  app.listen(PORT, '127.0.0.1', () => {
+    console.log('Painel NFS-e (PRODUCAO REAL): http://localhost:' + PORT);
+  });
+}

@@ -9,6 +9,7 @@ import { join } from 'node:path';
 import type { Venda } from './store.js';
 import { config } from './config.js';
 import { getComCertificado } from './http-mtls.js';
+import { erroEnvioEmail } from './email-validacao.js';
 
 const DANFSE_URL = 'https://adn.nfse.gov.br/danfse';
 
@@ -22,9 +23,8 @@ export async function baixarDanfse(chave: string): Promise<Buffer> {
 export async function enviarEmailNota(venda: Venda, chave: string): Promise<void> {
   const apiKey = process.env.RESEND_API_KEY;
   const from = process.env.RESEND_FROM_NOTAS ?? process.env.RESEND_FROM;
-  if (!venda.email) throw new Error('venda sem e-mail');
-  if (!apiKey) throw new Error('RESEND_API_KEY ausente');
-  if (!from) throw new Error('RESEND_FROM_NOTAS/RESEND_FROM ausente');
+  const erro = erroEnvioEmail({ email: venda.email, apiKey, from });
+  if (erro) throw new Error(erro);
 
   // PDF é best-effort: nota já emitida, e-mail sai mesmo sem anexo.
   let pdf: Buffer | null = null;
