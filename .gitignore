@@ -9,3 +9,15 @@ tmp/
 
 node_modules/
 *.log
+
+# Estado operacional e scripts de depuração locais — contêm caminhos da máquina,
+# CNPJ do prestador e chaves de nota. Pertencem ao repo privado, não a este.
+ESTADO.md
+nota-real.json
+check-end.cjs
+colunas-xlsx.mjs
+estado-notas.cjs
+formato-endereco.mjs
+ler-xlsx.cjs
+preparar-nota.mjs
+seed-produtos.mjs
