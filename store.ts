@@ -95,6 +95,7 @@ export interface FiltroVendas {
 // ─── Singleton ───────────────────────────────────────────────────────────────
 
 let _db: DatabaseSync | null = null;
+let _dbPath: string | null = null;
 
 function resolveDbPath(): string {
   const scriptDir = join(fileURLToPath(import.meta.url), "..");
@@ -106,10 +107,21 @@ function resolveDbPath(): string {
 
 // ─── initDb ──────────────────────────────────────────────────────────────────
 
-export function initDb(): DatabaseSync {
-  if (_db) return _db;
+/**
+ * dbPath e so para teste (ex.: ':memory:'). Sem argumento, usa sempre
+ * output/emissor.db e reaproveita a conexao entre chamadas — nao mude o
+ * default em codigo de producao. Com dbPath explicito, SEMPRE abre uma
+ * conexao nova (isolamento entre testes; ':memory:' reaberto e um banco
+ * vazio novo, nao a mesma conexao anterior).
+ */
+export function initDb(dbPath?: string): DatabaseSync {
+  const path = dbPath ?? resolveDbPath();
+  const podeReaproveitar = dbPath === undefined && _db && _dbPath === path;
+  if (podeReaproveitar) return _db as DatabaseSync;
+  if (_db) _db.close();
 
-  _db = new DatabaseSync(resolveDbPath());
+  _db = new DatabaseSync(path);
+  _dbPath = path;
 
   _db.exec("PRAGMA journal_mode=WAL;");
   _db.exec("PRAGMA foreign_keys=ON;");

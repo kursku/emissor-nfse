@@ -1,0 +1,13 @@
+{
+  "idVenda": "conferencia-dry-run",
+  "produto": "treinamento",
+  "tomador": {
+    "CNPJ": "11444777000161",
+    "xNome": "EMPRESA EXEMPLO LTDA",
+    "email": "exemplo@exemplo.com.br"
+  },
+  "xDescServ": "Prestacao de servico de treinamento em inteligencia artificial, competencia julho/2026.",
+  "vServ": 1500.00,
+  "cTribNac": "080201",
+  "cNBS": "122051900"
+}

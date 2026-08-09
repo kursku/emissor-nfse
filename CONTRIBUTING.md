@@ -48,6 +48,21 @@ branch principal.
 - Resumo com menos de 72 caracteres.
 - Use o corpo só quando o motivo da mudança precisar de explicação.
 
+## Branch e pull request
+
+Trabalhe em branch, nunca direto na `main`. O nome segue o tipo principal da
+mudança, com os mesmos tipos da convenção de commits acima: `feat/`, `fix/`,
+`chore/`, `refactor/`, `style/`, `test/`, `docs/`.
+
+Abrir pull request não é formalidade aqui: o [CodeRabbit](https://coderabbit.ai)
+revisa cada PR e só age em PR, nunca em push direto. A configuração está em
+`.coderabbit.yaml`, com instruções específicas para os arquivos de código
+fiscal (`montar-dps.ts`, `validacoes.mjs`), para as integrações e para os
+testes.
+
+A revisão dele é conselho, não portão. O que bloqueia de fato é o hook de
+pre-commit e o CI, ambos rodando `npm run check`.
+
 ## Testes: o seam puro é `montar-dps.ts`
 
 `montar-dps.ts` monta a DPS (Declaração de Prestação de Serviços) a partir

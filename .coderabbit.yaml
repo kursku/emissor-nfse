@@ -1,0 +1,59 @@
+# Configuracao do CodeRabbit para este repositorio.
+# Revisao automatica de pull request. Nao roda em push direto na main.
+
+language: "pt-BR"
+
+reviews:
+  # Resumo do que mudou, sem enfeite.
+  high_level_summary: true
+  poem: false
+  review_status: true
+
+  # Nao bloquear o merge: o gate que bloqueia e o pre-commit (typecheck +
+  # testes) e o CI. A revisao aqui e conselho, nao portao.
+  request_changes_workflow: false
+
+  auto_review:
+    enabled: true
+    drafts: false
+
+  path_instructions:
+    - path: "montar-dps.ts"
+      instructions: >
+        Codigo fiscal. Este modulo monta a DPS que vai para a SEFIN Nacional, e
+        nota emitida em producao e irreversivel. Verifique com rigor: campos
+        obrigatorios do layout (IM, regApTribSN quando ME/EPP, pTotTribSN),
+        condicionais por regime tributario, e o fuso de Sao Paulo no calculo de
+        dCompet e dhEmi. Passar no XSD nao garante que a SEFIN aceite: ela
+        recusa casos que o schema permite. Nao sugira refatoracao que troque
+        clareza por concisao aqui.
+
+    - path: "validacoes.mjs"
+      instructions: >
+        Validacoes de borda de documentos e codigos fiscais (CPF, CNPJ,
+        cTribNac, cNBS, codigo IBGE, CEP). Confira os algoritmos de digito
+        verificador contra a especificacao, nao contra a intuicao. Este modulo e
+        a unica barreira em casos que o XSD aceita.
+
+    - path: "integracoes/**"
+      instructions: >
+        Integracoes com origens de venda especificas. Sao opcionais e nao devem
+        criar dependencia do nucleo de emissao para com elas. Dado que vem de
+        planilha e input nao confiavel: aponte parse que adivinha em vez de
+        recusar.
+
+    # `.test.*` e nao `.test.ts`: metade da suite e .mjs (validacoes,
+    # nota-exemplo), porque roda sem transpilacao junto com o setup.
+    - path: "**/*.test.*"
+      instructions: >
+        Aponte teste tautologico, ou seja, teste que recalcula o valor esperado
+        do mesmo jeito que o codigo sob teste. Os valores esperados devem vir de
+        fonte independente: literal conhecido, layout oficial, ou nota real
+        aceita pela SEFIN.
+
+  tools:
+    languagetool:
+      enabled: false
+
+chat:
+  auto_reply: true
