@@ -25,7 +25,6 @@ import {
   registrarNota,
 } from './store.js';
 import type { Venda } from './store.js';
-import { montarDps as montarDpsPuro } from './montar-dps.js';
 import type { EmissaoInput } from './montar-dps.js';
 import { config } from './config.js';
 import { conferirDps } from './dps-xml.js';

@@ -25,6 +25,7 @@
  */
 
 import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 
 import XLSX from "xlsx";
 
@@ -75,7 +76,7 @@ function carregarProdutosMapeados(db: ReturnType<typeof initDb>): Set<string> {
 
 // ─── Interface de linha bruta ─────────────────────────────────────────────────
 
-interface RawRow {
+export interface RawRow {
   "Identificador da venda"?: string;
   "Status da venda"?: string;
   "Data da Venda"?: number | string;
@@ -93,12 +94,12 @@ interface RawRow {
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-function str(v: unknown): string {
+export function str(v: unknown): string {
   if (v === null || v === undefined) return "";
   return String(v).trim();
 }
 
-function parseNum(v: unknown): number {
+export function parseNum(v: unknown): number {
   const n = parseFloat(String(v));
   return isNaN(n) ? 0 : n;
 }
@@ -108,7 +109,7 @@ function parseNum(v: unknown): number {
  * Epoch Excel: 1899-12-30 (dia 0).
  * Serial é número de dias desde essa data; parte fracionária = hora do dia.
  */
-function excelSerialToIso(serial: unknown): string | undefined {
+export function excelSerialToIso(serial: unknown): string | undefined {
   const n = parseFloat(String(serial));
   if (isNaN(n) || n <= 0) return undefined;
   // 1899-12-30 em ms UTC
@@ -125,17 +126,18 @@ function excelSerialToIso(serial: unknown): string | undefined {
  * Classifica a fila da venda.
  * Prioridade: excecao > pendente_cadastro > aguardando_garantia > pronta
  */
-function classificarFila(
+export function classificarFila(
   row: RawRow,
   hoje: Date,
   temEnderecoCompleto: boolean,
+  produtosMapeados: Set<string>,
 ): "excecao" | "pendente_cadastro" | "aguardando_garantia" | "pronta_sem_endereco" | "pronta" {
   const produto = str(row["Produto principal"]);
   const isEstrangeiro = str(row["Sou Estrangeiro"]).toLowerCase() === "sim";
   const comissao = parseNum(row["Comissão total de coprodutores"]);
 
   // excecao: estrangeiro, produto sem mapa, ou comissão zerada em linha Aprovada
-  if (isEstrangeiro || !PRODUTOS_MAPEADOS.has(produto) || comissao <= 0) {
+  if (isEstrangeiro || !produtosMapeados.has(produto) || comissao <= 0) {
     return "excecao";
   }
 
@@ -159,15 +161,16 @@ function classificarFila(
 
 // ─── Normalização de linha ────────────────────────────────────────────────────
 
-function normalizarVenda(
+export function normalizarVenda(
   row: RawRow,
   hoje: Date,
   end: EnderecoLastlink | null,
   cmun: string | null,
+  produtosMapeados: Set<string>,
 ): Venda {
   const id_venda = str(row["Identificador da venda"]);
   const temEnderecoCompleto = Boolean(end && cmun);
-  const fila = classificarFila(row, hoje, temEnderecoCompleto);
+  const fila = classificarFila(row, hoje, temEnderecoCompleto, produtosMapeados);
   const comissao = parseNum(row["Comissão total de coprodutores"]);
   const valorBruto = parseNum(row["Valor da venda"]);
 
@@ -272,7 +275,7 @@ async function main(): Promise<void> {
     const end = parseEnderecoLastlink(row["Endereço do membro"]);
     const cmun = end ? await ibgeDoCep(end.CEP) : null;
 
-    const venda = normalizarVenda(row, hoje, end, cmun);
+    const venda = normalizarVenda(row, hoje, end, cmun, PRODUTOS_MAPEADOS);
 
     // Validação de id_venda (deve ser UUID preenchido)
     if (!venda.id_venda) {
@@ -308,7 +311,13 @@ async function main(): Promise<void> {
   console.log(`\n  Soma comissão (valor NFS-e): R$ ${somaComissao.toFixed(2)}`);
 }
 
-main().catch((err) => {
-  console.error("Erro fatal na importacao:", err);
-  process.exit(1);
-});
+// Só roda main() quando executado diretamente (nfse importar / spawn do
+// server.ts) — importar o módulo em teste (para os helpers puros acima) não
+// deve exigir argv nem abrir o xlsx.
+const isMain = process.argv[1] === fileURLToPath(import.meta.url);
+if (isMain) {
+  main().catch((err) => {
+    console.error("Erro fatal na importacao:", err);
+    process.exit(1);
+  });
+}
