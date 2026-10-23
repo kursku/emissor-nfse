@@ -33,6 +33,13 @@ de notas e envio por e-mail.
   E0234). Se a sua origem de vendas não coleta endereço, parte das notas não
   será emitível. A importação separa esses casos numa fila própria
   (`pronta_sem_endereco`) em vez de deixá-los falhar no envio.
+- A DPS já segue o leiaute da **NT 009** (`finNFSe` direto em `infDPS`, CST
+  derivado de `cClassTrib`), obrigatório na SEFIN Nacional a partir de
+  **01/12/2026**. Até essa data o sistema **recusa emitir com
+  `NFSE_AMBIENTE=1`** (produção real), para não enviar o leiaute novo antes
+  da hora; a simulação continua funcionando. A produção restrita
+  (`NFSE_AMBIENTE=2`) aceita o leiaute novo desde 20/10/2026 (comunicado
+  CGNFS-e), mas nem todo município tem cadastro nela (seção 4, item 4).
 
 ## O que faz / o que não faz
 
@@ -67,6 +74,7 @@ nfse fila --limite 5
 Nenhum dos quatro comandos acima emite nota real: `nfse fila` roda em modo
 simulação por padrão. Emitir de verdade exige definir `NFSE_AMBIENTE=1` no
 `.env` **e** passar a flag `--real` — veja a seção 4 antes de fazer isso.
+Antes de 01/12/2026 a emissão real em produção fica bloqueada (veja Status).
 
 ## Comandos
 
@@ -305,7 +313,16 @@ Por isso, antes de emitir a primeira nota real:
    irreversível.
 
 3. Só depois de validar em simulação/homologação, emita uma nota real com
-   a flag `--real`.
+   a flag `--real` (a partir de 01/12/2026; antes disso a produção real é
+   recusada, veja Status).
+
+4. **A produção restrita pode recusar o seu município mesmo com convênio.**
+   O cadastro de convênio da produção restrita é separado do de produção.
+   Se a restrita responder `E0037` ("código do município emissor ...
+   inexistente no cadastro de convênio municipal") mas `nfse check` mostrar
+   o município conveniado, não há como ensaiar na restrita: valide em
+   simulação e, a partir de 01/12/2026, emita a primeira nota real **sozinha**, conferindo a
+   autorização antes de seguir com as demais.
 
 ## 5. Uso no dia a dia
 
@@ -477,6 +494,32 @@ envie manualmente.
   cadeia de certificados (CAs) reconhecida pelo sistema. O projeto já inclui
   um `ca_bundle.crt` para resolver isso — confira se o arquivo está presente
   na pasta do projeto.
+
+- **`Bundle @nfewizard/nfse sem o patch NT 009`:** os patches de
+  `patches/` não foram aplicados (por exemplo, depois de um `npm ci` sem o
+  passo seguinte). Rode `npm run patch:apply` e tente de novo. O sistema
+  confere isso antes de qualquer envio.
+
+- **`NFSE_AMBIENTE=1 recusado até 2026-12-01`:** o leiaute NT 009 só vale na
+  produção real a partir de 01/12/2026 (horário de Brasília). Antes disso,
+  use a simulação ou `NFSE_AMBIENTE=2` para testar e aguarde a data para
+  emitir de verdade.
+
+- **`MODO REAL recusado: NFSE_AMBIENTE=2 ...`:** você rodou `nfse fila --real`
+  com o ambiente de produção restrita. A restrita não gera nota com validade
+  fiscal, então a fila recusa antes de reservar ou enviar qualquer venda.
+  Para emitir de verdade, defina `NFSE_AMBIENTE=1`.
+
+- **`DPS inválida: ...`:** antes de enviar, o sistema valida o XML da DPS
+  contra o XSD oficial, e a mensagem aponta o elemento recusado (por exemplo,
+  `xDescServ` além do tamanho máximo). Erros de formato que o sistema já
+  conhece (`cNBS` sem 9 dígitos, valor inválido) aparecem antes, como
+  `Emissão inválida: ...`. Nos dois casos, corrija o dado de origem; nada foi
+  enviado à SEFIN.
+
+- **Erro `E0037`:** o município emissor não consta no cadastro de convênio
+  do ambiente usado. Em produção, confira a adesão com `nfse check` (seção
+  2.4). Na produção restrita, veja o item 4 da seção 4.
 
 Se um erro não estiver listado aqui, anote o código do erro e a mensagem
 completa e consulte o seu contador ou quem configurou o sistema.
