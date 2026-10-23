@@ -17,11 +17,15 @@
  * Emissão em produção é irreversível — só se corrige por substituição, no prazo
  * do município. Confira o JSON antes de rodar.
  */
-import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import type { EmissaoInput } from './montar-dps.js';
+import type { EmitirNfseOptions } from './emissor.js';
 import { config } from './config.js';
 import { conferirDps } from './dps-xml.js';
+import { mensagemModoReal } from './ambiente.mjs';
 import {
   buscarNotaPorVenda,
   concluirEmissao,
@@ -51,6 +55,28 @@ interface NotaAvulsa extends Omit<EmissaoInput, 'nDPS' | 'cIndOp' | 'cClassTrib'
   cIndOp?: string;
   cClassTrib?: string;
 }
+
+export interface EmissaoAvulsaDependencies {
+  ambiente?: 1 | 2;
+  outputDir?: string;
+  agora?: () => Date;
+  log?: (mensagem: string) => void;
+  initDb?: () => unknown;
+  proximoNDPS?: (outputDir?: string) => number;
+  buscarNotaPorVenda?: typeof buscarNotaPorVenda;
+  criarEReservarEmissao?: typeof criarEReservarEmissao;
+  marcarTentativaAveriguar?: typeof marcarTentativaAveriguar;
+  marcarTentativaRejeitada?: typeof marcarTentativaRejeitada;
+  concluirEmissao?: typeof concluirEmissao;
+  buscarChaveNoXmlPorNdps?: typeof buscarChaveNoXmlPorNdps;
+  emitirNfse?: EmitirNfse;
+}
+
+type EmitirNfse = (
+  input: EmissaoInput,
+  antesDoEnvio?: () => void,
+  options?: EmitirNfseOptions,
+) => Promise<unknown>;
 
 function carregar(path: string): NotaAvulsa {
   const nota = JSON.parse(readFileSync(path, 'utf-8')) as NotaAvulsa;
@@ -107,16 +133,83 @@ function jsonPathArg(): string {
   return p.includes(' ') ? `"${p}"` : p;
 }
 
-async function main(): Promise<void> {
-  const jsonPath = process.argv[2];
-  if (!jsonPath) {
-    console.error('Uso: EMITIR_REAL=1 npx tsx emitir-avulsa.ts <nota.json>');
-    process.exit(1);
+function textoEnsaio(decisao: ReturnType<typeof classificarRespostaEmissao>): string {
+  if (decisao.estado === 'autorizada') {
+    const codigos = decisao.codigos.length > 0 ? ` códigos=${decisao.codigos.join(',')}` : '';
+    return `ENSAIO (produção restrita): AUTORIZADA. chave=${decisao.chave}${codigos}`;
   }
-  const nota = carregar(jsonPath);
-  initDb();
-  const nDPS = String(proximoNDPS(config.outputDir));
+  if (decisao.estado === 'rejeitada') {
+    const codigos = decisao.codigos.length > 0 ? decisao.codigos.join(',') : 'nenhum';
+    return `ENSAIO (produção restrita): REJEITADA. códigos=${codigos}`;
+  }
+  return 'ENSAIO (produção restrita): resposta recebida sem chave de acesso.';
+}
 
+async function carregarEmissor(
+  override?: EmitirNfse,
+): Promise<EmitirNfse> {
+  if (override) return override;
+  try {
+    const modulo = await import('./emissor.js');
+    return modulo.emitirNfse;
+  } catch (err: unknown) {
+    const detalhe = textoErroSefin(err) || 'erro não detalhado';
+    throw new ErroAntesDoEnvio(`Falha ao carregar emissor antes do envio: ${detalhe}`, { cause: err });
+  }
+}
+
+export async function executarEmissaoAvulsa(
+  nota: NotaAvulsa,
+  deps: EmissaoAvulsaDependencies = {},
+): Promise<void> {
+  const ambiente = deps.ambiente ?? config.ambiente;
+  const outputDir = deps.outputDir ?? config.outputDir;
+  const agora = deps.agora ?? (() => new Date());
+  const log = deps.log ?? ((mensagem: string) => console.log(mensagem));
+  const inicializar = deps.initDb ?? (() => initDb());
+  const proximo = deps.proximoNDPS ?? proximoNDPS;
+  const buscarNota = deps.buscarNotaPorVenda ?? buscarNotaPorVenda;
+  const reservar = deps.criarEReservarEmissao ?? criarEReservarEmissao;
+  const marcarAveriguar = deps.marcarTentativaAveriguar ?? marcarTentativaAveriguar;
+  const marcarRejeitada = deps.marcarTentativaRejeitada ?? marcarTentativaRejeitada;
+  const concluir = deps.concluirEmissao ?? concluirEmissao;
+  const buscarChave = deps.buscarChaveNoXmlPorNdps ?? buscarChaveNoXmlPorNdps;
+  const real = process.env['EMITIR_REAL'] === '1';
+  const ensaio = real && ambiente === 2;
+
+  // Ensaio usa um identificador local de 13 dígitos, sem consultar ou avançar
+  // o contador de produção. A SEFIN restrita recebe a DPS normalmente.
+  if (ensaio) {
+    const nDPS = String(agora().getTime());
+    const input: EmissaoInput = {
+      nDPS,
+      tomador: nota.tomador,
+      xDescServ: nota.xDescServ,
+      vServ: nota.vServ,
+      cTribNac: nota.cTribNac,
+      cNBS: nota.cNBS,
+      cIndOp: nota.cIndOp ?? '100301',
+      cClassTrib: nota.cClassTrib ?? '000001',
+      ...(nota.pTotTribSN !== undefined ? { pTotTribSN: nota.pTotTribSN } : {}),
+    };
+    exigirEmissaoValida(input, { idVenda: nota.idVenda });
+    exigirLeiauteNovoPermitido(ambiente, agora());
+    const pastaEnsaio = mkdtempSync(join(tmpdir(), 'nfse-ensaio-'));
+    const resultado = await (await carregarEmissor(deps.emitirNfse))(
+      input,
+      undefined,
+      { outputDir: pastaEnsaio },
+    );
+    const mensagemEnsaio = mensagemModoReal(ambiente, pastaEnsaio);
+    if (mensagemEnsaio) log(mensagemEnsaio);
+    const decisao = classificarRespostaEmissao(resultado);
+    log(textoEnsaio(decisao));
+    if (decisao.estado === 'rejeitada') throw new Error(decisao.mensagem);
+    return;
+  }
+
+  inicializar();
+  const nDPS = String(proximo(outputDir));
   const input: EmissaoInput = {
     nDPS,
     tomador: nota.tomador,
@@ -137,8 +230,10 @@ async function main(): Promise<void> {
     return;
   }
 
-  exigirLeiauteNovoPermitido(config.ambiente);
-  if (buscarNotaPorVenda(nota.idVenda)) {
+  exigirLeiauteNovoPermitido(ambiente, agora());
+  const mensagem = mensagemModoReal(ambiente);
+  if (mensagem) log(mensagem);
+  if (buscarNota(nota.idVenda)) {
     console.log(`Venda ${nota.idVenda} já possui Nota. Emissão não enviada.`);
     return;
   }
@@ -155,9 +250,9 @@ async function main(): Promise<void> {
     fila: 'pronta',
     status: 'pronta',
   };
-  const tentativa = criarEReservarEmissao(venda, config.outputDir);
+  const tentativa = reservar(venda, outputDir);
   if (!tentativa) {
-    if (buscarNotaPorVenda(nota.idVenda)) {
+    if (buscarNota(nota.idVenda)) {
       console.log(`Venda ${nota.idVenda} já possui Nota. Emissão não enviada.`);
       return;
     }
@@ -170,19 +265,13 @@ async function main(): Promise<void> {
   // agente HTTPS global mesmo numa conferência.
   let resultado: unknown;
   try {
-    let emitirNfse: (input: EmissaoInput) => Promise<unknown>;
-    try {
-      ({ emitirNfse } = await import('./emissor.js'));
-    } catch (err: unknown) {
-      const detalhe = textoErroSefin(err) || 'erro não detalhado';
-      throw new ErroAntesDoEnvio(`Falha ao carregar emissor antes do envio: ${detalhe}`, { cause: err });
-    }
-    resultado = await emitirNfse(input);
+    const emitirNfse = await carregarEmissor(deps.emitirNfse);
+    resultado = await emitirNfse(input, undefined, { outputDir });
   } catch (err: unknown) {
     const mensagem = textoErroSefin(err) || 'Falha na emissão';
     try {
-      if (ehErroAntesDoEnvio(err)) marcarTentativaRejeitada(nota.idVenda, mensagem);
-      else marcarTentativaAveriguar(nota.idVenda, mensagem);
+      if (ehErroAntesDoEnvio(err)) marcarRejeitada(nota.idVenda, mensagem);
+      else marcarAveriguar(nota.idVenda, mensagem);
     } catch (secundario: unknown) {
       console.error(`[avulsa] Falha ao marcar resultado da emissão: ${textoErroSefin(secundario) || 'erro não detalhado'}`);
       console.error(`Conciliação manual: ${comandoConciliacao(nota.idVenda, undefined, ehErroAntesDoEnvio(err))}`);
@@ -194,14 +283,14 @@ async function main(): Promise<void> {
     decisao = classificarRespostaEmissao(resultado);
   } catch (err: unknown) {
     const mensagem = textoErroSefin(err) || 'Falha ao classificar resposta da emissão';
-    try { marcarTentativaAveriguar(nota.idVenda, mensagem); } catch (secundario: unknown) {
+    try { marcarAveriguar(nota.idVenda, mensagem); } catch (secundario: unknown) {
       console.error(`[avulsa] Falha ao marcar resposta ambígua: ${textoErroSefin(secundario) || 'erro não detalhado'}`);
       console.error(`Conciliação manual: ${comandoConciliacao(nota.idVenda)}`);
     }
     throw err;
   }
   if (decisao.estado === 'rejeitada') {
-    try { marcarTentativaRejeitada(nota.idVenda, decisao.mensagem); } catch (secundario: unknown) {
+    try { marcarRejeitada(nota.idVenda, decisao.mensagem); } catch (secundario: unknown) {
       console.error(`[avulsa] Falha ao marcar rejeição: ${textoErroSefin(secundario) || 'erro não detalhado'}`);
       console.error(`Conciliação manual: ${comandoConciliacao(nota.idVenda, undefined, true)}`);
     }
@@ -214,11 +303,11 @@ async function main(): Promise<void> {
   let chave = decisao.estado === 'autorizada' ? decisao.chave : null;
   if (decisao.estado === 'sucesso_sem_chave') {
     try {
-      chave = buscarChaveNoXmlPorNdps(config.outputDir, input.nDPS);
+      chave = buscarChave(outputDir, input.nDPS);
     } catch (err: unknown) {
       const detalhe = textoErroSefin(err) || 'erro não detalhado';
       const mensagem = `${MENSAGEM_CHAVE_A_VERIFICAR} Falha ao ler XML autorizado: ${detalhe}`;
-      try { marcarTentativaAveriguar(nota.idVenda, mensagem); } catch (secundario: unknown) {
+      try { marcarAveriguar(nota.idVenda, mensagem); } catch (secundario: unknown) {
         console.error(`[avulsa] Falha ao marcar falha de leitura: ${textoErroSefin(secundario) || 'erro não detalhado'}`);
         console.error(`Conciliação manual: ${comandoConciliacao(nota.idVenda)}`);
       }
@@ -226,8 +315,8 @@ async function main(): Promise<void> {
     }
   }
   if (!chave) {
-    const mensagem = `${MENSAGEM_CHAVE_A_VERIFICAR} Verifique ${join(config.outputDir, 'autorizacao')}.`;
-    try { marcarTentativaAveriguar(nota.idVenda, mensagem); } catch (secundario: unknown) {
+    const mensagem = `${MENSAGEM_CHAVE_A_VERIFICAR} Verifique ${join(outputDir, 'autorizacao')}.`;
+    try { marcarAveriguar(nota.idVenda, mensagem); } catch (secundario: unknown) {
       console.error(`[avulsa] Falha ao marcar Chave ausente: ${textoErroSefin(secundario) || 'erro não detalhado'}`);
       console.error(`Conciliação manual: ${comandoConciliacao(nota.idVenda)}`);
     }
@@ -235,15 +324,15 @@ async function main(): Promise<void> {
   }
 
   try {
-    concluirEmissao({
+    concluir({
       chave_acesso: chave,
       ndps: Number(input.nDPS),
       id_venda: nota.idVenda,
-      emitida_em: new Date().toISOString(),
+      emitida_em: agora().toISOString(),
     });
   } catch (err: unknown) {
     const mensagem = textoErroSefin(err) || 'Falha ao persistir a emissão';
-    try { marcarTentativaAveriguar(nota.idVenda, mensagem); } catch (secundario: unknown) {
+    try { marcarAveriguar(nota.idVenda, mensagem); } catch (secundario: unknown) {
       console.error(`[avulsa] Falha ao marcar falha de persistência: ${textoErroSefin(secundario) || 'erro não detalhado'}`);
       console.error(`Conciliação manual: ${comandoConciliacao(nota.idVenda, chave)}`);
     }
@@ -254,7 +343,19 @@ async function main(): Promise<void> {
   console.log(`Arquivar: npx tsx arquivar-nota.ts ${nota.idVenda}`);
 }
 
-main().catch((err) => {
-  console.error('FALHA na emissão:', textoErroSefin(err) || 'Falha na emissão');
-  process.exit(1);
-});
+async function main(): Promise<void> {
+  const jsonPath = process.argv[2];
+  if (!jsonPath) {
+    console.error('Uso: EMITIR_REAL=1 npx tsx emitir-avulsa.ts <nota.json>');
+    process.exit(1);
+  }
+  await executarEmissaoAvulsa(carregar(jsonPath));
+}
+
+const isMain = process.argv[1] === fileURLToPath(import.meta.url);
+if (isMain) {
+  main().catch((err) => {
+    console.error('FALHA na emissão:', textoErroSefin(err) || 'Falha na emissão');
+    process.exit(1);
+  });
+}

@@ -35,6 +35,7 @@ import {
   MENSAGEM_CHAVE_A_VERIFICAR,
 } from './chave-acesso.js';
 import { ErroAntesDoEnvio, ehErroAntesDoEnvio } from './emissao-erros.js';
+import { recusaModoReal } from './ambiente.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const DB_PATH = join(__dirname, 'output', 'emissor.db');
@@ -523,6 +524,16 @@ app.post('/api/emitir', async (req, res) => {
   let idVendaEmissao: string | undefined;
   let falhaAoGravarTransicao = false;
   try {
+    let ambiente = deps.ambiente;
+    if (ambiente === undefined && !deps.emitirNfse) {
+      const { config: emissorConfig } = await import('./config.js');
+      ambiente = emissorConfig.ambiente;
+    }
+    const recusa = ambiente === undefined ? null : recusaModoReal(true, ambiente);
+    if (recusa) {
+      res.status(409).json({ erro: recusa });
+      return;
+    }
     // Com emitirNfse injetado e sem deps.ambiente, a guarda não roda; o emissor real roda a sua.
     if (deps.ambiente !== undefined) {
       exigirLeiauteNovoPermitido(deps.ambiente, deps.agora);

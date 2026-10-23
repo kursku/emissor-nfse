@@ -14,7 +14,7 @@ import assert from "node:assert/strict";
 
 import { mascaraDoc, mascararDocumentos } from "./mascara.js";
 import { createPainelApp, PAINEL_TOKEN_HEADER } from "./server.js";
-import { initDb, reservarEmissao, upsertVenda } from "./store.js";
+import { initDb, proximoNDPS, reservarEmissao, upsertVenda } from "./store.js";
 
 test("mascaraDoc mostra so os 3 primeiros e 2 ultimos digitos de um CPF", () => {
   assert.equal(mascaraDoc("111.444.777-35"), "111...35");
@@ -227,7 +227,8 @@ test("defaults e emissão usam o mesmo nDPS com e sem outputDir injetado", async
     const app = createPainelApp({
       panelPort: 0,
       dbPath,
-      ambiente: 2,
+      ambiente: 1,
+      agora: new Date("2026-12-01T03:00:00Z"),
       ...(outputDirInjetado ? { outputDir } : {}),
       exigirBundlePatchado: () => {},
       criarEReservarEmissao: (venda, dir) => {
@@ -326,6 +327,57 @@ test("painel com emissor injetado recusa ambiente 1 antes da implantação", asy
   }
 });
 
+test("painel recusa modo real na produção restrita antes de reservar ou emitir", async () => {
+  const root = mkdtempSync(join(tmpdir(), "nfse-server-restrita-"));
+  const dbPath = join(root, "emissor.db");
+  const outputDir = join(root, "arquivos");
+  mkdirSync(outputDir);
+  writeFileSync(join(outputDir, "ndps.json"), JSON.stringify({ proximoNDPS: 42 }));
+  const antigoModo = process.env["EMITIR_REAL"];
+  process.env["EMITIR_REAL"] = "1";
+  let reservas = 0;
+  let chamadas = 0;
+  const app = createPainelApp({
+    panelPort: 0,
+    dbPath,
+    outputDir,
+    ambiente: 2,
+    criarEReservarEmissao: () => {
+      reservas++;
+      throw new Error("reserva não deveria ser chamada");
+    },
+    emitirNfse: async () => {
+      chamadas++;
+      throw new Error("emissor não deveria ser chamado");
+    },
+  });
+  const { server, port } = await ouvir(app);
+
+  try {
+    const response = await pedir(port, "/api/emitir", {
+      method: "POST",
+      token: await tokenDaPagina(port),
+      body: pedidoValido,
+    });
+    assert.equal(response.status, 409);
+    assert.deepEqual(JSON.parse(response.body), {
+      erro: "MODO REAL recusado: NFSE_AMBIENTE=2 é produção restrita e não gera nota fiscal real.",
+    });
+    assert.equal(reservas, 0);
+    assert.equal(chamadas, 0);
+    const database = initDb(dbPath);
+    assert.equal((database.prepare("SELECT COUNT(*) AS n FROM vendas").get() as { n: number }).n, 0);
+    assert.equal((database.prepare("SELECT COUNT(*) AS n FROM tentativas_emissao").get() as { n: number }).n, 0);
+    assert.equal(proximoNDPS(outputDir), 42);
+  } finally {
+    if (antigoModo === undefined) delete process.env["EMITIR_REAL"];
+    else process.env["EMITIR_REAL"] = antigoModo;
+    await fechar(server);
+    initDb(":memory:");
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test("painel verifica o bundle antes de chamar o emissor", async () => {
   const root = mkdtempSync(join(tmpdir(), "nfse-server-bundle-"));
   const dbPath = join(root, "emissor.db");
@@ -335,8 +387,8 @@ test("painel verifica o bundle antes de chamar o emissor", async () => {
   const app = createPainelApp({
     panelPort: 0,
     dbPath,
-    ambiente: 2,
-    agora: new Date("2026-11-30T12:00:00Z"),
+    ambiente: 1,
+    agora: new Date("2026-12-01T03:00:00Z"),
     outputDir: join(root, "arquivos"),
     exigirBundlePatchado: () => ordem.push("bundle"),
     criarEReservarEmissao: (venda) => ({
@@ -405,7 +457,8 @@ test("falha antes da reserva não marca tentativa nem Venda", async () => {
   const app = createPainelApp({
     panelPort: 0,
     dbPath,
-    ambiente: 2,
+    ambiente: 1,
+    agora: new Date("2026-12-01T03:00:00Z"),
     outputDir: join(root, "arquivos"),
     criarEReservarEmissao: () => { throw new Error("falha antes da reserva"); },
     marcarTentativaAveriguar: () => { marcas++; },

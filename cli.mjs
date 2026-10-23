@@ -95,7 +95,6 @@ if (precisaTsx && !existsSync(TSX)) {
 // qualquer valor herdado do ambiente do operador.
 const real = resto.includes('--real');
 const args = resto.filter((a) => a !== '--real');
-if (real) console.log('MODO REAL: a nota sera emitida de verdade na SEFIN.\n');
 
 const alvoPath = join(BASE, alvo.script);
 const filho = spawn(process.execPath, precisaTsx ? [TSX, alvoPath, ...args] : [alvoPath, ...args], {

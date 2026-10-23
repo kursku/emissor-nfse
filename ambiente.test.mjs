@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 import {
   adnDanfseUrl,
   ambienteFilho,
+  mensagemModoReal,
   recusaModoReal,
 } from './ambiente.mjs';
 
@@ -19,6 +20,14 @@ test('--real em produção restrita é recusado antes da emissão', () => {
     'MODO REAL recusado: NFSE_AMBIENTE=2 é produção restrita e não gera nota fiscal real.');
   assert.equal(recusaModoReal(false, 2), null);
   assert.equal(recusaModoReal(true, 1), null);
+});
+
+test('mensagens de emissão real distinguem produção e ensaio', () => {
+  assert.equal(mensagemModoReal(1), 'MODO REAL: a nota sera emitida de verdade na SEFIN.');
+  assert.equal(
+    mensagemModoReal(2, 'C:\\Temp\\nfse-ensaio-123'),
+    'ENSAIO (produção restrita): grava só em C:\\Temp\\nfse-ensaio-123',
+  );
 });
 
 test('DANFSe usa o host do ADN correspondente ao ambiente', () => {

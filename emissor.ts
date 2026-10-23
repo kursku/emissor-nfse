@@ -27,6 +27,14 @@ import { exigirBundlePatchado } from './emissor-preflight.js';
 // Reexportado aqui para os chamadores existentes.
 export type { EmissaoInput, TomadorEndereco } from './montar-dps.js';
 
+type NfseWizard = Pick<NFSe, 'Autorizacao'>;
+type CriarNfseWizard = (nfseConfig: NFSeConfig) => NfseWizard;
+
+export interface EmitirNfseOptions {
+  outputDir?: string;
+  criarWizard?: CriarNfseWizard;
+}
+
 /** Monta a DPS com a configuração do prestador vinda do `.env`. */
 export const montarDps = (input: EmissaoInput) => montarDpsPuro(input, config);
 
@@ -65,29 +73,38 @@ export { DEFAULTS } from './montar-dps.js';
 // Instância lazy — criada apenas quando emitirNfse() é chamado (modo real).
 // Não inicializar no topo do módulo: requer openssl + certificado, que falham
 // em simulação onde só montarDps() é importado.
-let _nfseWizard: NFSe | null = null;
+let _nfseWizard: NfseWizard | null = null;
 
-function getNfseWizard(): NFSe {
-  if (_nfseWizard) return _nfseWizard;
-  exigirCertificado();
+function getNfseWizard(
+  outputDir: string,
+  criarWizard?: CriarNfseWizard,
+): NfseWizard {
+  if (outputDir === OUTPUT_DIR && _nfseWizard) return _nfseWizard;
+  if (!criarWizard) exigirCertificado();
   const nfseConfig = criarNfseConfig({
     cnpj: config.cnpj,
     uf: config.uf,
     ambiente: config.ambiente,
     certPath: CERT_PATH,
     certPassword: CERT_PASSWORD,
-    outputDir: OUTPUT_DIR,
+    outputDir,
   });
   // Ticket #9 uses the current DPS layout; do not re-enable the legacy signature.
   delete nfseConfig.lib?.assinaturaDPS;
   silenciarLogsNfseWizard();
-  _nfseWizard = new NFSe(nfseConfig);
-  return _nfseWizard;
+  const criado = criarWizard ? criarWizard(nfseConfig) : new NFSe(nfseConfig);
+  if (outputDir === OUTPUT_DIR) _nfseWizard = criado;
+  return criado;
 }
 
-export async function emitirNfse(input: EmissaoInput, antesDoEnvio?: () => void) {
+export async function emitirNfse(
+  input: EmissaoInput,
+  antesDoEnvio?: () => void,
+  options: EmitirNfseOptions = {},
+) {
+  const outputDir = options.outputDir ?? OUTPUT_DIR;
   let nfseData: NFSeType;
-  let wizard: NFSe;
+  let wizard: NfseWizard;
   try {
     exigirLeiauteNovoPermitido(config.ambiente);
     exigirBundlePatchado();
@@ -95,7 +112,7 @@ export async function emitirNfse(input: EmissaoInput, antesDoEnvio?: () => void)
     const conferencia = await conferirDps(input, config);
     if (!conferencia.ok) throw new Error(`DPS inválida: ${conferencia.msg}`);
     nfseData = { DPS: montarDps(input) as unknown as NFSeType['DPS'] };
-    wizard = getNfseWizard();
+    wizard = getNfseWizard(outputDir, options.criarWizard);
     antesDoEnvio?.();
   } catch (erro: unknown) {
     if (erro instanceof ErroAntesDoEnvio) throw erro;
@@ -104,8 +121,9 @@ export async function emitirNfse(input: EmissaoInput, antesDoEnvio?: () => void)
   }
 
   const resultado = await wizard.Autorizacao(nfseData);
+  mkdirSync(outputDir, { recursive: true });
   writeFileSync(
-    join(OUTPUT_DIR, `resultado-ndps-${input.nDPS}.json`),
+    join(outputDir, `resultado-ndps-${input.nDPS}.json`),
     JSON.stringify(resultado, null, 2),
     'utf-8',
   );

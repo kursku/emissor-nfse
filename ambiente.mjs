@@ -39,6 +39,14 @@ export function recusaModoReal(real, ambiente) {
   return null;
 }
 
+export function mensagemModoReal(ambiente, pastaEnsaio) {
+  if (ambiente === 1) return 'MODO REAL: a nota sera emitida de verdade na SEFIN.';
+  if (ambiente === 2 && pastaEnsaio) {
+    return `ENSAIO (produção restrita): grava só em ${pastaEnsaio}`;
+  }
+  return null;
+}
+
 export function adnDanfseUrl(ambiente, chave) {
   const host = ADN_HOST[ambiente];
   if (!host) throw new Error(`NFSE_AMBIENTE inválido: ${ambiente}`);

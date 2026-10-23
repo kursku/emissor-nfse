@@ -40,7 +40,7 @@ import {
   deveInterromperFilaAposVerificacao,
   montarInput,
 } from './fila-helpers.js';
-import { recusaLeiauteNovo, recusaModoReal } from './ambiente.mjs';
+import { mensagemModoReal, recusaLeiauteNovo, recusaModoReal } from './ambiente.mjs';
 import { mascararDocumentos } from './mascara.js';
 import { textoErroSefin } from './diagnostico-sefin.js';
 import {
@@ -219,6 +219,10 @@ async function main(): Promise<void> {
     console.error(recusaLeiaute);
     process.exitCode = 1;
     return;
+  }
+  if (MODO_REAL) {
+    const mensagem = mensagemModoReal(config.ambiente);
+    if (mensagem) console.log(mensagem);
   }
 
   if (MODO_REAL) mkdirSync(dirname(LOCK_PATH), { recursive: true });

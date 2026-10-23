@@ -310,10 +310,17 @@ Por isso, antes de emitir a primeira nota real:
    faça essa mudança quando tiver certeza de que os dados cadastrais (IM,
    código do serviço, regime tributário) estão corretos — errar o valor de
    uma variável custa pouco, uma nota emitida em produção real é
-   irreversível.
+   irreversível. Para ensaiar a emissão avulsa na restrita, use
+   `nfse emitir nota.json --real`: o comando chama a SEFIN de produção
+   restrita, e grava o XML assinado, que contém dados do tomador, e o resultado
+   somente em uma pasta de ensaio em `%TEMP%`, impressa na saída. Essa pasta
+   não é apagada sozinha e pode ser limpa pelo sistema: copie o que quiser
+   guardar e apague a pasta depois;
+   não grava venda, Nota, nDPS de produção ou e-mail.
 
-3. Só depois de validar em simulação/homologação, emita uma nota real com
-   a flag `--real` (a partir de 01/12/2026; antes disso a produção real é
+3. Só depois de validar em simulação e, se necessário, no ensaio da produção
+   restrita, emita uma nota real com a flag `--real` e
+   `NFSE_AMBIENTE=1` (a partir de 01/12/2026; antes disso a produção real é
    recusada, veja Status).
 
 4. **A produção restrita pode recusar o seu município mesmo com convênio.**
@@ -366,6 +373,12 @@ cliente e do serviço:
 ```
 nfse emitir nota.json --real
 ```
+
+Com `NFSE_AMBIENTE=2` (o padrão), a flag `--real` vira um ensaio na produção
+restrita: o XML assinado, que contém dados do tomador, e o resultado são
+gravados somente em uma pasta em `%TEMP%`, impressa na saída. Ela não é
+apagada sozinha e pode ser limpa pelo sistema; copie o que quiser guardar e
+apague a pasta depois.
 
 ### Arquivar uma nota já emitida
 
@@ -506,9 +519,15 @@ envie manualmente.
   emitir de verdade.
 
 - **`MODO REAL recusado: NFSE_AMBIENTE=2 ...`:** você rodou `nfse fila --real`
-  com o ambiente de produção restrita. A restrita não gera nota com validade
-  fiscal, então a fila recusa antes de reservar ou enviar qualquer venda.
-  Para emitir de verdade, defina `NFSE_AMBIENTE=1`.
+  ou tentou emitir pelo painel com o ambiente de produção restrita. A fila e
+  o painel recusam antes de reservar, alocar nDPS ou chamar o emissor. Para
+  emitir de verdade, defina `NFSE_AMBIENTE=1`. Já `nfse emitir nota.json
+  --real` usa esse ambiente como **ensaio**: chama a produção restrita,
+  mostra `ENSAIO (produção restrita)` com resultado sanitizado e grava o XML
+  assinado e o resultado somente na pasta de ensaio em `%TEMP%` impressa na
+  saída. Ela não é apagada sozinha e pode ser limpa pelo sistema; copie o que
+  quiser guardar e apague a pasta depois. Não grava arquivos nas pastas de
+  produção, no store ou na sequência de nDPS, nem envia e-mail.
 
 - **`DPS inválida: ...`:** antes de enviar, o sistema valida o XML da DPS
   contra o XSD oficial, e a mensagem aponta o elemento recusado (por exemplo,

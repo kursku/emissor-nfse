@@ -1253,7 +1253,8 @@ test('falha antes da reserva não marca tentativa de nenhuma Venda', async () =>
   const app = createPainelApp({
     panelPort: 0,
     dbPath,
-    ambiente: 2,
+    ambiente: 1,
+    agora: new Date('2026-12-01T03:00:00Z'),
     outputDir,
     criarEReservarEmissao: () => { throw new Error('falha antes da reserva'); },
     marcarTentativaAveriguar: () => { marcas++; },
