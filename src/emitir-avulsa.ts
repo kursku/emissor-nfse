@@ -5,7 +5,7 @@
  *   nfse emitir nota.json           confere e mostra o que seria enviado
  *   nfse emitir nota.json --real    emite de verdade (irreversivel)
  *
- * Formato do JSON (ver nota-exemplo.json):
+ * Formato do JSON (ver examples/nota-exemplo.json):
  * {
  *   "idVenda": "cliente-2026-01",
  *   "produto": "consultoria",
@@ -340,13 +340,13 @@ export async function executarEmissaoAvulsa(
   }
 
   console.log(`AUTORIZADA. chave=${chave}`);
-  console.log(`Arquivar: npx tsx arquivar-nota.ts ${nota.idVenda}`);
+  console.log(`Arquivar: nfse arquivar ${nota.idVenda}`);
 }
 
 async function main(): Promise<void> {
   const jsonPath = process.argv[2];
   if (!jsonPath) {
-    console.error('Uso: EMITIR_REAL=1 npx tsx emitir-avulsa.ts <nota.json>');
+    console.error('Uso: nfse emitir <arquivo> [--real]');
     process.exit(1);
   }
   await executarEmissaoAvulsa(carregar(jsonPath));

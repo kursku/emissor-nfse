@@ -7,12 +7,12 @@
  *
  * Nunca mexe em venda 'emitida' — essa ja virou documento fiscal.
  *
- * Uso: node devolver-a-fila.mjs [id_venda]   (sem argumento: todas as simuladas)
+ * Uso: node bin/devolver-a-fila.mjs [id_venda]   (sem argumento: todas as simuladas)
  */
 import { DatabaseSync } from 'node:sqlite';
 import { join } from 'node:path';
 
-const db = new DatabaseSync(join(import.meta.dirname, 'output', 'emissor.db'));
+const db = new DatabaseSync(join(import.meta.dirname, '..', 'output', 'emissor.db'));
 const idVenda = process.argv[2];
 
 const where = idVenda ? "status = 'simulada' AND id_venda = ?" : "status = 'simulada'";

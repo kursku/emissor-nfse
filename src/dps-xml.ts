@@ -12,6 +12,9 @@ import { NFE_SchemaValidate } from '@nfewizard/shared';
 
 import { montarDps } from './montar-dps.js';
 import type { ConfigPrestador, EmissaoInput } from './montar-dps.js';
+import { cstExigeGibscbs, validarCClassTrib } from './validar-emissao.js';
+
+export { validarCClassTrib } from './validar-emissao.js';
 
 /** Chave usada pelo getSchema() da lib para achar o DPS_v1.01.xsd. */
 const METODO_SCHEMA = 'NFSe_Autorizacao';
@@ -27,9 +30,12 @@ function derivarCstComoALib(infDPS: Record<string, unknown>): void {
   const trib = ibscbs?.valores?.trib as Record<string, unknown> | undefined;
   const g = trib?.['gIBSCBS'] as Record<string, unknown> | undefined;
   if (!trib || !g || typeof g['cClassTrib'] !== 'string' || 'CST' in g) return;
+  const { cClassTrib, ...gIBSCBS } = g;
   delete trib['gIBSCBS'];
-  trib['CST'] = g['cClassTrib'].slice(0, 3);
-  trib['cClassTrib'] = g['cClassTrib'];
+  const cst = cClassTrib.slice(0, 3);
+  trib['CST'] = cst;
+  trib['cClassTrib'] = cClassTrib;
+  if (cstExigeGibscbs(cst) || Object.keys(gIBSCBS).length) trib['gIBSCBS'] = gIBSCBS;
 }
 
 /**
@@ -43,6 +49,7 @@ export function gerarXmlDps(
   cfg: ConfigPrestador,
   agora?: Date,
 ): string {
+  validarCClassTrib(input.cClassTrib);
   const dps = montarDps(input, cfg, agora);
   const infDPSObject: Record<string, unknown> = { ...dps.infDps };
   derivarCstComoALib(infDPSObject);

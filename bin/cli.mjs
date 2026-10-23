@@ -9,39 +9,40 @@
 import { spawn } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
-import { ambienteFilho } from './ambiente.mjs';
+import { ambienteFilho } from '../src/ambiente.mjs';
 
-const BASE = import.meta.dirname;
-const TSX = join(BASE, 'node_modules', 'tsx', 'dist', 'cli.mjs');
+const BIN_DIR = import.meta.dirname;
+const ROOT = join(BIN_DIR, '..');
+const TSX = join(ROOT, 'node_modules', 'tsx', 'dist', 'cli.mjs');
 
 const COMANDOS = {
   setup: {
-    script: 'setup.mjs',
+    script: 'bin/setup.mjs',
     uso: 'nfse setup',
     desc: 'assistente de configuracao — cria o .env passo a passo',
   },
   check: {
-    script: 'check-convenio.ts',
+    script: 'src/check-convenio.ts',
     uso: 'nfse check [cTribNac]',
     desc: 'verifica adesao do municipio ao Convenio Nacional e a aliquota vigente',
   },
   painel: {
-    script: 'server.ts',
+    script: 'src/painel/server.ts',
     uso: 'nfse painel',
     desc: 'abre o painel web em http://localhost:3000',
   },
   fila: {
-    script: 'fila.ts',
+    script: 'src/fila.ts',
     uso: 'nfse fila [--limite N] [--real]',
     desc: 'processa a fila de vendas (simulacao por padrao; --real emite de verdade)',
   },
   emitir: {
-    script: 'emitir-avulsa.ts',
+    script: 'src/emitir-avulsa.ts',
     uso: 'nfse emitir <nota.json> --real',
-    desc: 'emite uma nota avulsa a partir de um JSON (ver nota-exemplo.json)',
+    desc: 'emite uma nota avulsa a partir de um JSON (ver examples/nota-exemplo.json)',
   },
   conciliar: {
-    script: 'conciliar.ts',
+    script: 'src/conciliar.ts',
     uso: 'nfse conciliar <id_venda> --chave <chave_acesso> | --rejeitada',
     desc: 'concilia manualmente uma emissão que ficou a verificar',
   },
@@ -56,7 +57,7 @@ const COMANDOS = {
     desc: 'contratos recorrentes: cadastra uma vez, gera as vendas do mes',
   },
   arquivar: {
-    script: 'arquivar-nota.ts',
+    script: 'src/arquivar-nota.ts',
     uso: 'nfse arquivar <id_venda>',
     desc: 'salva XML e DANFSe da nota em output/notas/<AAAA-MM>/<id_venda>/',
   },
@@ -87,7 +88,7 @@ if (!alvo) {
 // setup.mjs roda com node puro — precisa funcionar antes do npm install.
 const precisaTsx = alvo.script.endsWith('.ts');
 if (precisaTsx && !existsSync(TSX)) {
-  console.error(`Dependencias nao instaladas. Rode "npm ci" e "npm run patch:apply" em ${BASE}.`);
+  console.error(`Dependencias nao instaladas. Rode "npm ci" e "npm run patch:apply" em ${ROOT}.`);
   process.exit(1);
 }
 
@@ -96,7 +97,7 @@ if (precisaTsx && !existsSync(TSX)) {
 const real = resto.includes('--real');
 const args = resto.filter((a) => a !== '--real');
 
-const alvoPath = join(BASE, alvo.script);
+const alvoPath = join(ROOT, alvo.script);
 const filho = spawn(process.execPath, precisaTsx ? [TSX, alvoPath, ...args] : [alvoPath, ...args], {
   stdio: 'inherit',
   env: ambienteFilho(process.env, real),

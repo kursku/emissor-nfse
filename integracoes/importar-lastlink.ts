@@ -29,11 +29,11 @@ import { fileURLToPath } from "node:url";
 
 import XLSX from "xlsx";
 
-import { initDb, upsertVenda, listVendas } from "../store.js";
-import type { Venda } from "../store.js";
+import { initDb, upsertVenda, listVendas } from "../src/store.js";
+import type { Venda } from "../src/store.js";
 import { parseEnderecoLastlink } from "./endereco-lastlink.js";
 import type { EnderecoLastlink } from "./endereco-lastlink.js";
-import { parseValorMonetario } from "../valor-monetario.js";
+import { parseValorMonetario } from "../src/valor-monetario.js";
 
 // ─── Endereco e codigo do municipio ───────────────────────────────────────────
 

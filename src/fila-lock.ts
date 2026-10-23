@@ -21,9 +21,12 @@ export interface OpcoesLockFilaReal {
   pid?: number;
   agora?: Date;
   heartbeatMs?: number;
+  agendarHeartbeat?: (callback: () => void, intervalo: number) => NodeJS.Timeout;
   avisar?: (mensagem: string) => void;
   tocar?: (path: string, agora: Date) => void;
 }
+
+type AgendarHeartbeat = (callback: () => void, intervalo: number) => NodeJS.Timeout;
 
 function criarArquivoAtomico(path: string, conteudo: string): boolean {
   const temporario = `${path}.tmp-${process.pid}-${randomBytes(6).toString('hex')}`;
@@ -54,6 +57,7 @@ function iniciarHeartbeat(
   tocar: (path: string, agora: Date) => void,
   avisar: (mensagem: string) => void,
   estado: EstadoHeartbeat,
+  agendar: AgendarHeartbeat,
 ): NodeJS.Timeout {
   let timer: NodeJS.Timeout;
   const falhar = (): void => {
@@ -64,7 +68,7 @@ function iniciarHeartbeat(
     avisar('Heartbeat do lock da fila real falhou 3 vezes seguidas; desistindo.');
   };
 
-  timer = setInterval(() => {
+  timer = agendar(() => {
     if (estado.desistiu) return;
     try {
       if (readFileSync(path, 'utf8') !== conteudo) throw new Error('conteúdo do lock mudou');
@@ -87,6 +91,8 @@ export function adquirirLockFilaReal(
   const avisar = opcoes.avisar ?? ((mensagem) => console.warn(mensagem));
   const heartbeatMs = opcoes.heartbeatMs ?? 30_000;
   const tocar = opcoes.tocar ?? ((arquivo, data) => utimesSync(arquivo, data, data));
+  const agendarHeartbeat: AgendarHeartbeat = opcoes.agendarHeartbeat
+    ?? ((callback, intervalo) => setInterval(callback, intervalo));
   if (!Number.isInteger(heartbeatMs) || heartbeatMs <= 0 || heartbeatMs > LOCK_MAX_AGE_MS / 3) {
     throw new Error(`heartbeatMs deve ser um inteiro positivo de no máximo ${LOCK_MAX_AGE_MS / 3} ms.`);
   }
@@ -134,7 +140,15 @@ export function adquirirLockFilaReal(
   }
 
   const estadoHeartbeat: EstadoHeartbeat = { falhasSeguidas: 0, desistiu: false };
-  const heartbeat = iniciarHeartbeat(path, conteudo, heartbeatMs, tocar, avisar, estadoHeartbeat);
+  const heartbeat = iniciarHeartbeat(
+    path,
+    conteudo,
+    heartbeatMs,
+    tocar,
+    avisar,
+    estadoHeartbeat,
+    agendarHeartbeat,
+  );
   return {
     confirmar(): boolean {
       if (estadoHeartbeat.desistiu) return false;

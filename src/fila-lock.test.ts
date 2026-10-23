@@ -87,8 +87,15 @@ test("heartbeat continua depois de uma falha transitória e confirmar renova o l
   const root = mkdtempSync(join(tmpdir(), "nfse-fila-lock-heartbeat-transitorio-"));
   const caminho = join(root, ".fila-real.lock");
   let toques = 0;
+  let executarHeartbeat: (() => void) | undefined;
+  const timer = setInterval(() => {}, 60_000);
+  timer.unref();
   const lock = adquirirLockFilaReal(caminho, {
     heartbeatMs: 5,
+    agendarHeartbeat: (callback) => {
+      executarHeartbeat = callback;
+      return timer;
+    },
     tocar: () => {
       toques++;
       if (toques === 1) throw new Error("falha transitória");
@@ -96,10 +103,10 @@ test("heartbeat continua depois de uma falha transitória e confirmar renova o l
     },
   });
   assert.ok(lock);
-
-  await new Promise((resolve) => setTimeout(resolve, 25));
-
-  assert.ok(toques >= 2);
+  assert.ok(executarHeartbeat);
+  executarHeartbeat();
+  executarHeartbeat();
+  assert.equal(toques, 2);
   assert.equal(lock.confirmar(), true);
   lock.liberar();
 });

@@ -14,7 +14,7 @@ import {
   TOKEN_TTL_MS,
 } from './server.js';
 import { montarPayloadFormulario } from './painel-payload.mjs';
-import { initDb, marcarStatus, marcarTentativaRejeitada, proximoNDPS, reservarEmissao, upsertVenda } from './store.js';
+import { initDb, marcarStatus, marcarTentativaRejeitada, proximoNDPS, reservarEmissao, upsertVenda } from '../store.js';
 
 const panel = createPainelApp({ panelPort: 0 });
 let server: Server | undefined;

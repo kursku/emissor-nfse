@@ -9,9 +9,11 @@ import { join } from 'node:path';
 
 import { cnpjInvalido, codMunicipioInvalido } from './validacoes.mjs';
 
-// `.env` fica na mesma pasta do código (Node >= 20.12).
+const ROOT = join(import.meta.dirname, '..');
+
+// `.env` fica na raiz do repositorio (Node >= 20.12).
 try {
-  process.loadEnvFile(join(import.meta.dirname, '.env'));
+  process.loadEnvFile(join(ROOT, '.env'));
 } catch {
   /* sem .env — segue com o ambiente do shell */
 }
@@ -95,7 +97,7 @@ export const config = {
    * exige declarar NFSE_AMBIENTE=1 de propósito.
    */
   ambiente: codigo('NFSE_AMBIENTE', 2 as 1 | 2, [1, 2]),
-  outputDir: opcional('NFSE_OUTPUT_DIR', join(import.meta.dirname, 'output', 'nfewizard')),
+  outputDir: opcional('NFSE_OUTPUT_DIR', join(ROOT, 'output', 'nfewizard')),
   /**
    * Regime tributário. opSimpNac: 1 não optante, 2 MEI, 3 ME/EPP.
    * regApTribSN só se aplica a ME/EPP (obrigatório nesse caso — erro E0166).

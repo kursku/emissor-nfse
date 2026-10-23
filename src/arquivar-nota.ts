@@ -1,7 +1,7 @@
 /**
  * arquivar-nota.ts — organiza uma NFS-e emitida em pasta própria.
  *
- * Uso: npx tsx arquivar-nota.ts <id_venda>
+ * Uso: nfse arquivar <id_venda>
  *
  * Lê chave (tabela notas) e competência (vendas.data_venda) do banco, então:
  *   - copia o XML autorizado (<output>/autorizacao/<chave>.xml) → nfse.xml
@@ -19,10 +19,10 @@ import { adnDanfseUrl } from './ambiente.mjs';
 import { chaveAcessoValida } from './chave-acesso.js';
 import { exigirIdentificadorSeguro } from './validar-emissao.js';
 
-const BASE = import.meta.dirname;
+const BASE = join(import.meta.dirname, '..');
 const idVenda = process.argv[2];
 if (!idVenda) {
-  console.error('Uso: npx tsx arquivar-nota.ts <id_venda>');
+  console.error('Uso: nfse arquivar <id_venda>');
   process.exit(1);
 }
 try {

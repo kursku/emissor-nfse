@@ -58,7 +58,7 @@ códigos confirmado.
 - Bloqueado por: T1, T2, T3
 - Pronto quando: existe um `.env` completo e `nfse check` executa sem erro de configuração ausente.
 
-O assistente (`node setup.mjs`, ou `nfse setup` depois do `npm link`) pergunta
+O assistente (`node bin/setup.mjs`, ou `nfse setup` depois do `npm link`) pergunta
 um item por vez, confere o CNPJ e resolve o código IBGE do município pelo
 nome da cidade — por isso o código IBGE não tem ticket próprio. Este ticket
 só pode rodar depois que T1, T2 e T3 tiverem resposta, porque o assistente

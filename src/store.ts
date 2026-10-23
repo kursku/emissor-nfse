@@ -2,7 +2,7 @@
  * store.ts — SQLite persistence layer para o emissor NFS-e v2
  *
  * Usa node:sqlite (built-in Node 24, DatabaseSync).
- * Banco em: output/emissor.db (ao lado do codigo)
+ * Banco em: output/emissor.db (na raiz do repositorio)
  *
  * API exportada:
  *   initDb()              — abre/cria banco, migrations, seed mapa_produtos
@@ -129,13 +129,13 @@ export interface FiltroVendas {
 
 let _db: DatabaseSync | null = null;
 let _dbPath: string | null = null;
+const ROOT = dirname(dirname(fileURLToPath(import.meta.url)));
 
 function resolveDbPath(): string {
-  const scriptDir = join(fileURLToPath(import.meta.url), "..");
   // Primeira execucao numa instalacao limpa: sem a pasta, o SQLite falha com
   // "unable to open database file" antes de qualquer mensagem util.
-  mkdirSync(join(scriptDir, "output"), { recursive: true });
-  return join(scriptDir, "output", "emissor.db");
+  mkdirSync(join(ROOT, "output"), { recursive: true });
+  return join(ROOT, "output", "emissor.db");
 }
 
 // ─── initDb ──────────────────────────────────────────────────────────────────
@@ -616,7 +616,7 @@ export function proximoNDPS(outputDir?: string): number {
 function resolverPastaSaida(outputDir?: string): string {
   return outputDir?.trim()
     || process.env['NFSE_OUTPUT_DIR']?.trim()
-    || join(fileURLToPath(import.meta.url), "..", "output", "nfewizard");
+    || join(ROOT, "output", "nfewizard");
 }
 
 function proximoNDPSNoBanco(database: DatabaseSync, outputDir?: string): number {

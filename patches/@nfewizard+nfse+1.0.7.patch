@@ -1,5 +1,5 @@
 diff --git a/node_modules/@nfewizard/nfse/dist/index.cjs b/node_modules/@nfewizard/nfse/dist/index.cjs
-index 400c2d4..538aba2 100644
+index 400c2d4..7f31fbd 100644
 --- a/node_modules/@nfewizard/nfse/dist/index.cjs
 +++ b/node_modules/@nfewizard/nfse/dist/index.cjs
 @@ -236,13 +236,13 @@ class NFSeAutorizacaoService extends shared.BaseNFSe {
@@ -17,6 +17,17 @@ index 400c2d4..538aba2 100644
          if (servico.comExt) {
              servicoNormalizado.comExt = servico.comExt;
          }
+@@ -266,6 +266,10 @@ class NFSeAutorizacaoService extends shared.BaseNFSe {
+     derivarCstDoClassTrib(cClassTrib) {
+         return cClassTrib.slice(0, 3);
+     }
++    cstExigeGibscbs(cst) {
++        // Fonte: NT 009 E0960/E0961 e tabela SVRS; só CST 000 está confirmado.
++        return ['000'].includes(cst);
++    }
+     normalizarSituacaoTributariaIBSCBS(gIBSCBS) {
+         const situacaoNormalizada = {
+             CST: this.derivarCstDoClassTrib(gIBSCBS.cClassTrib),
 @@ -317,9 +317,7 @@ class NFSeAutorizacaoService extends shared.BaseNFSe {
          if (!ibscbs) {
              return ibscbs;
@@ -38,7 +49,7 @@ index 400c2d4..538aba2 100644
 +        const situacaoNormalizada = this.normalizarSituacaoTributariaIBSCBS(ibscbs.valores.trib.gIBSCBS);
 +        const { CST, cClassTrib, ...gIBSCBS } = situacaoNormalizada;
 +        valoresNormalizados.trib = { CST, cClassTrib };
-+        if (Object.keys(gIBSCBS).length) {
++        if (this.cstExigeGibscbs(CST) || Object.keys(gIBSCBS).length) {
 +            valoresNormalizados.trib.gIBSCBS = gIBSCBS;
 +        }
          ibscbsNormalizado.valores = valoresNormalizados;
@@ -59,7 +70,7 @@ index 400c2d4..538aba2 100644
 +exports.NFSE_NT009_PATCHED = true;
  //# sourceMappingURL=index.cjs.map
 diff --git a/node_modules/@nfewizard/nfse/dist/index.mjs b/node_modules/@nfewizard/nfse/dist/index.mjs
-index cfdeed9..5ac24de 100644
+index cfdeed9..d19e3b5 100644
 --- a/node_modules/@nfewizard/nfse/dist/index.mjs
 +++ b/node_modules/@nfewizard/nfse/dist/index.mjs
 @@ -232,13 +232,13 @@ class NFSeAutorizacaoService extends BaseNFSe {
@@ -77,6 +88,17 @@ index cfdeed9..5ac24de 100644
          if (servico.comExt) {
              servicoNormalizado.comExt = servico.comExt;
          }
+@@ -262,6 +262,10 @@ class NFSeAutorizacaoService extends BaseNFSe {
+     derivarCstDoClassTrib(cClassTrib) {
+         return cClassTrib.slice(0, 3);
+     }
++    cstExigeGibscbs(cst) {
++        // Fonte: NT 009 E0960/E0961 e tabela SVRS; só CST 000 está confirmado.
++        return ['000'].includes(cst);
++    }
+     normalizarSituacaoTributariaIBSCBS(gIBSCBS) {
+         const situacaoNormalizada = {
+             CST: this.derivarCstDoClassTrib(gIBSCBS.cClassTrib),
 @@ -313,9 +313,7 @@ class NFSeAutorizacaoService extends BaseNFSe {
          if (!ibscbs) {
              return ibscbs;
@@ -98,7 +120,7 @@ index cfdeed9..5ac24de 100644
 +        const situacaoNormalizada = this.normalizarSituacaoTributariaIBSCBS(ibscbs.valores.trib.gIBSCBS);
 +        const { CST, cClassTrib, ...gIBSCBS } = situacaoNormalizada;
 +        valoresNormalizados.trib = { CST, cClassTrib };
-+        if (Object.keys(gIBSCBS).length) {
++        if (this.cstExigeGibscbs(CST) || Object.keys(gIBSCBS).length) {
 +            valoresNormalizados.trib.gIBSCBS = gIBSCBS;
 +        }
          ibscbsNormalizado.valores = valoresNormalizados;

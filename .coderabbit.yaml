@@ -18,7 +18,7 @@ reviews:
     drafts: false
 
   path_instructions:
-    - path: "montar-dps.ts"
+    - path: "src/montar-dps.ts"
       instructions: >
         Codigo fiscal. Este modulo monta a DPS que vai para a SEFIN Nacional, e
         nota emitida em producao e irreversivel. Verifique com rigor: campos
@@ -28,7 +28,7 @@ reviews:
         recusa casos que o schema permite. Nao sugira refatoracao que troque
         clareza por concisao aqui.
 
-    - path: "validacoes.mjs"
+    - path: "src/validacoes.mjs"
       instructions: >
         Validacoes de borda de documentos e codigos fiscais (CPF, CNPJ,
         cTribNac, cNBS, codigo IBGE, CEP). Confira os algoritmos de digito

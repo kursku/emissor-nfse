@@ -57,7 +57,7 @@ export const OUTPUT_DIR = config.outputDir;
 if (!existsSync(OUTPUT_DIR)) mkdirSync(OUTPUT_DIR, { recursive: true });
 
 // SEFIN usa cadeia de CAs fora do cert store padrao do Node.
-const CA_BUNDLE_PATH = join(import.meta.dirname, 'ca_bundle.crt');
+const CA_BUNDLE_PATH = join(import.meta.dirname, '..', 'certs', 'ca_bundle.crt');
 if (existsSync(CA_BUNDLE_PATH)) {
   https.globalAgent = new https.Agent({
     ca: readFileSync(CA_BUNDLE_PATH),
@@ -65,7 +65,7 @@ if (existsSync(CA_BUNDLE_PATH)) {
     rejectUnauthorized: true,
   });
 } else {
-  console.warn('[emissor] AVISO: ca_bundle.crt nao encontrado, TLS pode falhar');
+  console.warn('[emissor] AVISO: certs/ca_bundle.crt nao encontrado, TLS pode falhar');
 }
 
 export { DEFAULTS } from './montar-dps.js';

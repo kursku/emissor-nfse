@@ -1,5 +1,5 @@
 /**
- * Painel local de emissao NFS-e. Uso: npx tsx server.ts (em scripts-ts/).
+ * Painel local de emissao NFS-e. Uso: npx tsx src/painel/server.ts.
  * NAO expor fora de localhost: usa certificado digital real e emite documento fiscal.
  */
 
@@ -10,8 +10,8 @@ import { join, dirname, isAbsolute, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawn } from 'node:child_process';
 import { DatabaseSync } from 'node:sqlite';
-import { DEFAULTS, exigirLeiauteNovoPermitido } from './montar-dps.js';
-import type { EmissaoInput } from './montar-dps.js';
+import { DEFAULTS, exigirLeiauteNovoPermitido } from '../montar-dps.js';
+import type { EmissaoInput } from '../montar-dps.js';
 import {
   concluirEmissao,
   criarEReservarEmissao,
@@ -21,28 +21,29 @@ import {
   proximoNDPS,
   recolocarVendaNaFila,
   ConflitoEmissaoError,
-} from './store.js';
-import { mascaraDoc, mascararDocumentos } from './mascara.js';
+} from '../store.js';
+import { mascaraDoc, mascararDocumentos } from '../mascara.js';
 import {
   extrairDiagnosticoSefin,
   textoDiagnosticoSefin,
   textoErroSefin,
-} from './diagnostico-sefin.js';
-import { exigirEmissaoValida } from './validar-emissao.js';
+} from '../diagnostico-sefin.js';
+import { exigirEmissaoValida } from '../validar-emissao.js';
 import {
   buscarChaveNoXmlPorNdps,
   classificarRespostaEmissao,
   MENSAGEM_CHAVE_A_VERIFICAR,
-} from './chave-acesso.js';
-import { ErroAntesDoEnvio, ehErroAntesDoEnvio } from './emissao-erros.js';
-import { recusaModoReal } from './ambiente.mjs';
+} from '../chave-acesso.js';
+import { ErroAntesDoEnvio, ehErroAntesDoEnvio } from '../emissao-erros.js';
+import { recusaModoReal } from '../ambiente.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const DB_PATH = join(__dirname, 'output', 'emissor.db');
+const ROOT = resolve(__dirname, '..', '..');
+const DB_PATH = join(ROOT, 'output', 'emissor.db');
 const PORT = 3000;
 
 export const PAINEL_TOKEN_HEADER = 'X-Painel-Token';
-export const IMPORT_DIR = join(__dirname, 'importacoes');
+export const IMPORT_DIR = join(ROOT, 'importacoes');
 export const TOKEN_TTL_MS = 12 * 60 * 60 * 1000;
 export const MAX_SESSION_TOKENS = 50;
 
@@ -111,7 +112,7 @@ function runSpawn(cmd: string, args: string[], env?: NodeJS.ProcessEnv): Promise
 // Invoca tsx via "node tsx/dist/cli.mjs" para evitar shims (.cmd/.ps1) no Windows.
 // Usa process.execPath (node.exe) diretamente -- preserva args com espacos.
 const spawnTsx: SpawnTsx = (scriptPath, extraArgs, env) => {
-  const tsxCli = join(__dirname, 'node_modules', 'tsx', 'dist', 'cli.mjs');
+  const tsxCli = join(ROOT, 'node_modules', 'tsx', 'dist', 'cli.mjs');
   const nodeArgs = existsSync(tsxCli)
     ? [tsxCli, scriptPath, ...extraArgs]
     : ['--import', 'tsx', scriptPath, ...extraArgs]; // fallback sem cli.mjs
@@ -240,7 +241,7 @@ export function createPainelApp(deps: PainelDependencies = {}) {
   async function resolverOutputDir(): Promise<string | undefined> {
     if (deps.outputDir !== undefined) return deps.outputDir;
     if (!modoRealAtivo()) return undefined;
-    const { config } = await import('./config.js');
+    const { config } = await import('../config.js');
     return config.outputDir;
   }
 
@@ -423,7 +424,7 @@ app.post('/api/importar', async (req, res) => {
     return;
   }
 
-  const scriptPath = join(__dirname, 'integracoes', 'importar-lastlink.ts');
+  const scriptPath = join(ROOT, 'integracoes', 'importar-lastlink.ts');
   const result = await runSpawn(scriptPath, [resolvedPath]);
   logSpawnDiagnostico('Importacao', result);
 
@@ -438,7 +439,7 @@ app.post('/api/importar', async (req, res) => {
 app.post('/api/simular', async (req, res) => {
   const { limite } = req.body as { limite?: number };
 
-  const scriptPath = join(__dirname, 'fila.ts');
+  const scriptPath = join(ROOT, 'src', 'fila.ts');
   const extraArgs: string[] = [];
   if (limite && limite > 0) {
     extraArgs.push('--limite', String(limite));
@@ -526,7 +527,7 @@ app.post('/api/emitir', async (req, res) => {
   try {
     let ambiente = deps.ambiente;
     if (ambiente === undefined && !deps.emitirNfse) {
-      const { config: emissorConfig } = await import('./config.js');
+      const { config: emissorConfig } = await import('../config.js');
       ambiente = emissorConfig.ambiente;
     }
     const recusa = ambiente === undefined ? null : recusaModoReal(true, ambiente);
@@ -538,7 +539,7 @@ app.post('/api/emitir', async (req, res) => {
     if (deps.ambiente !== undefined) {
       exigirLeiauteNovoPermitido(deps.ambiente, deps.agora);
     } else if (!deps.emitirNfse) {
-      const { config: emissorConfig } = await import('./config.js');
+      const { config: emissorConfig } = await import('../config.js');
       if (deps.agora === undefined) {
         exigirLeiauteNovoPermitido(emissorConfig.ambiente);
       } else {
@@ -546,7 +547,7 @@ app.post('/api/emitir', async (req, res) => {
       }
     }
     const exigirBundle = deps.exigirBundlePatchado
-      ?? (await import('./emissor-preflight.js')).exigirBundlePatchado;
+      ?? (await import('../emissor-preflight.js')).exigirBundlePatchado;
     exigirBundle();
     const pedidoValidado = {
       ...pedido,
@@ -562,7 +563,7 @@ app.post('/api/emitir', async (req, res) => {
     initDb(dbPath);
     let input = { ...pedidoValidado, nDPS: String(proximoNDPS(outputDirConfigurado)) };
     ndpsDaEmissao = input.nDPS;
-    const outputDir = outputDirConfigurado ?? (await import('./emissor.js')).OUTPUT_DIR;
+    const outputDir = outputDirConfigurado ?? (await import('../emissor.js')).OUTPUT_DIR;
     const venda = {
       id_venda: `painel-${randomBytes(16).toString('hex')}`,
       fonte: 'painel',
@@ -586,7 +587,7 @@ app.post('/api/emitir', async (req, res) => {
     console.log('[server] Emitindo DPS ' + input.nDPS + ' para ' + input.tomador.xNome + '...');
     let emissor: (input: EmissaoInput) => Promise<unknown>;
     try {
-      emissor = deps.emitirNfse ?? (await import('./emissor.js')).emitirNfse;
+      emissor = deps.emitirNfse ?? (await import('../emissor.js')).emitirNfse;
     } catch (err: unknown) {
       const detalhe = textoErroSefin(err) || 'erro não detalhado';
       throw new ErroAntesDoEnvio(`Falha ao carregar emissor antes do envio: ${detalhe}`, { cause: err });
@@ -691,7 +692,7 @@ app.post('/api/emitir', async (req, res) => {
 
 export const app = createPainelApp();
 
-// Só sobe o listener quando executado diretamente (npx tsx server.ts) —
+// Só sobe o listener quando executado diretamente (npx tsx src/painel/server.ts) —
 // importar o módulo em teste (para mascaraDoc) não deve abrir a porta 3000.
 const isMain = process.argv[1] === fileURLToPath(import.meta.url);
 if (isMain) {

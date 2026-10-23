@@ -26,9 +26,9 @@ import {
   listContratos,
   desativarContrato,
   gerarVendasDoMesDetalhado,
-} from "../store.js";
+} from "../src/store.js";
 import { fileURLToPath } from "node:url";
-import { parseValorMonetario } from "../valor-monetario.js";
+import { parseValorMonetario } from "../src/valor-monetario.js";
 
 // ─── Helpers de argparse minimalista ─────────────────────────────────────────
 

@@ -12,9 +12,9 @@ import { tmpdir } from "node:os";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { mascaraDoc, mascararDocumentos } from "./mascara.js";
+import { mascaraDoc, mascararDocumentos } from "../mascara.js";
 import { createPainelApp, PAINEL_TOKEN_HEADER } from "./server.js";
-import { initDb, proximoNDPS, reservarEmissao, upsertVenda } from "./store.js";
+import { initDb, proximoNDPS, reservarEmissao, upsertVenda } from "../store.js";
 
 test("mascaraDoc mostra so os 3 primeiros e 2 ultimos digitos de um CPF", () => {
   assert.equal(mascaraDoc("111.444.777-35"), "111...35");
@@ -160,7 +160,7 @@ test("subir o painel não carrega o bundle nativo", () => {
       "--import", "tsx",
       "--import", `data:text/javascript,${encodeURIComponent(bloquearLibxml)}`,
       "--input-type=module",
-      "--eval", "await import('./server.ts'); console.log('server-ok')",
+      "--eval", "await import('./src/painel/server.ts'); console.log('server-ok')",
     ],
     { cwd: process.cwd(), encoding: "utf8" },
   );

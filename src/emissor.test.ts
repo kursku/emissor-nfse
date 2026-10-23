@@ -8,8 +8,8 @@ import { tmpdir } from "node:os";
 test("certificado ausente é sinalizado como falha antes do envio", () => {
   const outputDir = mkdtempSync(join(tmpdir(), "nfse-emissor-pre-envio-"));
   const script = `
-    import { emitirNfse } from './emissor.ts';
-    import { ErroAntesDoEnvio } from './emissao-erros.ts';
+    import { emitirNfse } from './src/emissor.ts';
+    import { ErroAntesDoEnvio } from './src/emissao-erros.ts';
     const input = {
       nDPS: '1',
       tomador: {
@@ -56,7 +56,7 @@ test("emissão com saída injetada configura e grava tudo fora da produção", (
   const productionDir = mkdtempSync(join(tmpdir(), "nfse-emissor-producao-"));
   const ensaioDir = mkdtempSync(join(tmpdir(), "nfse-emissor-ensaio-"));
   const script = `
-    import { emitirNfse } from './emissor.ts';
+    import { emitirNfse } from './src/emissor.ts';
     const input = {
       nDPS: '77',
       tomador: {

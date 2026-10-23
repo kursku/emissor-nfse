@@ -50,12 +50,12 @@ identifica o bundle corrigido em runtime. A aplicação é explícita com
 
 O emissor preenche somente `finNFSe = 0` para NFS-e regular. `cMotivoEmisTI`
 nao entra em `EmissaoInput`. Os tipos antigos de `@nfewizard/types` nao sao
-patchados: `LayoutDPSNovo`, em `montar-dps.ts`, declara localmente o campo
+patchados: `LayoutDPSNovo`, em `src/montar-dps.ts`, declara localmente o campo
 novo e remove `finNFSe` do tipo local de `IBSCBS`, com conversao na fronteira
 da biblioteca.
 
-`DATA_IMPLANTACAO_NOVO_LEIAUTE = '2026-12-01'`, em `ambiente.mjs` e
-reexportada por `montar-dps.ts`, é a constante normativa usada pela guarda de
+`DATA_IMPLANTACAO_NOVO_LEIAUTE = '2026-12-01'`, em `src/ambiente.mjs` e
+reexportada por `src/montar-dps.ts`, é a constante normativa usada pela guarda de
 ambiente. `NFSE_AMBIENTE=1` é recusado antes dessa data, com mensagem clara,
 antes de abrir a fila e antes do envio real; `NFSE_AMBIENTE=2` continua aceito.
 O painel não importa o emissor para carregar `/api/defaults`, e os caminhos

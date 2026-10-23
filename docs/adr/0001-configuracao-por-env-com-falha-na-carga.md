@@ -9,7 +9,7 @@ Este projeto é um fork higienizado de um emissor que tinha CNPJ, Inscrição Mu
 
 ## Decisão
 
-Toda a identidade do prestador e os parâmetros fiscais passaram a vir de variáveis de ambiente, lidas por `config.ts`, sem nenhum default de produção. Configuração ausente ou malformada chama `process.exit(1)` com uma mensagem que nomeia a variável em falta, **no momento da carga do módulo** — antes de qualquer chamada à SEFIN. `config.ts` valida a contagem de dígitos do CNPJ (14) e do código IBGE do município (7), confirma a existência do arquivo do certificado no disco e recusa códigos de regime tributário fora da lista prevista no layout (`opSimpNac`, `regApTribSN`, `regEspTrib`, `NFSE_AMBIENTE`).
+Toda a identidade do prestador e os parâmetros fiscais passaram a vir de variáveis de ambiente, lidas por `src/config.ts`, sem nenhum default de produção. Configuração ausente ou malformada chama `process.exit(1)` com uma mensagem que nomeia a variável em falta, **no momento da carga do módulo** — antes de qualquer chamada à SEFIN. `src/config.ts` valida a contagem de dígitos do CNPJ (14) e do código IBGE do município (7), confirma a existência do arquivo do certificado no disco e recusa códigos de regime tributário fora da lista prevista no layout (`opSimpNac`, `regApTribSN`, `regEspTrib`, `NFSE_AMBIENTE`).
 
 ## Consequências
 
@@ -21,7 +21,7 @@ Toda a identidade do prestador e os parâmetros fiscais passaram a vir de variá
 
 ### Negativas / custo aceito
 
-- Como a validação roda na carga do módulo, importar `emissor.ts` exige `.env` completo e certificado presente no disco — isso torna o módulo não-importável em teste sem uma configuração real, e foi a razão pela qual a montagem da DPS (Declaração de Prestação de Serviço) foi extraída para um módulo puro separado, testável sem depender de `config.ts`.
+- Como a validação roda na carga do módulo, importar `src/emissor.ts` exige `.env` completo e certificado presente no disco — isso torna o módulo não-importável em teste sem uma configuração real, e foi a razão pela qual a montagem da DPS (Declaração de Prestação de Serviço) foi extraída para um módulo puro separado, testável sem depender de `src/config.ts`.
 
 ## Alternativas consideradas
 
@@ -35,7 +35,7 @@ O erro apareceria no meio de uma emissão, potencialmente depois de efeitos cola
 
 ### Biblioteca de schema (ex.: zod) — rejeitada
 
-Seria uma dependência nova para validar cerca de doze campos; as validações manuais em `config.ts` (contagem de dígitos, `existsSync`, listas de códigos permitidos) cobrem o caso sem adicionar peso ao projeto.
+Seria uma dependência nova para validar cerca de doze campos; as validações manuais em `src/config.ts` (contagem de dígitos, `existsSync`, listas de códigos permitidos) cobrem o caso sem adicionar peso ao projeto.
 
 ## Atualização — 2026-07-30: ambiente padrão seguro
 

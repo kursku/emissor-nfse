@@ -7,7 +7,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { gerarXmlDps, validarXsd } from './dps-xml.js';
+import { gerarXmlDps, validarCClassTrib, validarXsd } from './dps-xml.js';
 import type { ConfigPrestador, EmissaoInput } from './montar-dps.js';
 import { docTomadorInvalido } from './validacoes.mjs';
 
@@ -72,6 +72,16 @@ test('finNFSe fica em infDPS antes de cLocEmi', async () => {
   const semFinNFSe = xml.replace('<finNFSe>0</finNFSe>', '');
   const semFinResult = await validarXsd(semFinNFSe);
   assert.equal(semFinResult.ok, false, 'o XSD novo deve exigir finNFSe em infDPS');
+});
+
+test('CST 000 emite gIBSCBS vazio imediatamente antes de trib', () => {
+  const xml = gerarXmlDps(INPUT, CFG, AGORA);
+  assert.match(xml, /<CST>000<\/CST><cClassTrib>000001<\/cClassTrib><gIBSCBS\/><\/trib>/);
+});
+
+test('CST desconhecido falha fechado antes da montagem da DPS', () => {
+  assert.throws(() => validarCClassTrib('200052'), /CST 200.*ind_gIBSCBS confirmado/);
+  assert.throws(() => gerarXmlDps({ ...INPUT, cClassTrib: '200052' }, CFG, AGORA), /CST 200/);
 });
 
 test('XML montado passa na validacao XSD', async () => {

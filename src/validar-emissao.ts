@@ -15,6 +15,21 @@ export interface IdentificadoresEmissao {
 }
 
 const ID_VENDA_RE = /^[A-Za-z0-9_-]+$/;
+// Fonte: NT 009 E0960/E0961 e tabela SVRS; só CST 000 está confirmado.
+const CSTS_QUE_EXIGEM_GIBSCBS: readonly string[] = ['000'];
+
+export function cstExigeGibscbs(cst: string): boolean {
+  return CSTS_QUE_EXIGEM_GIBSCBS.includes(cst);
+}
+
+export function validarCClassTrib(cClassTrib: string): void {
+  const cst = cClassTrib.slice(0, 3);
+  if (!cstExigeGibscbs(cst)) {
+    throw new Error(
+      `cClassTrib ${cClassTrib}: CST ${cst} sem indicador ind_gIBSCBS confirmado; confirme na tabela SVRS antes de emitir`,
+    );
+  }
+}
 
 function registro(valor: unknown): Record<string, unknown> | null {
   return typeof valor === 'object' && valor !== null && !Array.isArray(valor)
@@ -98,6 +113,13 @@ export function validarEmissao(
   campoObrigatorio(problemas, 'xDescServ', emissao.xDescServ);
   campoObrigatorio(problemas, 'cIndOp', emissao.cIndOp);
   campoObrigatorio(problemas, 'cClassTrib', emissao.cClassTrib);
+  if (textoPreenchido(emissao.cClassTrib)) {
+    try {
+      validarCClassTrib(emissao.cClassTrib as string);
+    } catch (err: unknown) {
+      problemas.push(err instanceof Error ? err.message : String(err));
+    }
+  }
 
   const erroValor = vServInvalido(emissao.vServ);
   if (erroValor) problemas.push(erroValor);

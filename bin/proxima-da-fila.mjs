@@ -5,7 +5,7 @@
 import { DatabaseSync } from 'node:sqlite';
 import { join } from 'node:path';
 
-const db = new DatabaseSync(join(import.meta.dirname, 'output', 'emissor.db'), {
+const db = new DatabaseSync(join(import.meta.dirname, '..', 'output', 'emissor.db'), {
   readOnly: true,
 });
 

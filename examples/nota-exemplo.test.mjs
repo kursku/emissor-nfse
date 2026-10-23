@@ -18,7 +18,7 @@ import {
   codMunicipioInvalido,
   docTomadorInvalido,
   vServInvalido,
-} from './validacoes.mjs';
+} from '../src/validacoes.mjs';
 
 const nota = JSON.parse(
   readFileSync(join(import.meta.dirname, 'nota-exemplo.json'), 'utf-8'),

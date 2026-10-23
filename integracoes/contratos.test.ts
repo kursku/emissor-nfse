@@ -9,7 +9,7 @@ import {
   gerarVendasDoMesDetalhado,
   initDb,
   listVendas,
-} from "../store.js";
+} from "../src/store.js";
 
 test("CLI de Contrato aceita valor monetário pt-BR", () => {
   assert.equal(parseValorContrato("49,90"), 49.9);

@@ -105,8 +105,8 @@ function executarFila(script: string, outputDir: string) {
 test("fila não reserva Venda quando o fencing falha antes da reserva", () => {
   const outputDir = mkdtempSync(join(tmpdir(), "nfse-fila-fencing-"));
   const result = executarFila(`
-    const { initDb, listVendas, upsertVenda } = await import('./store.ts');
-    const { processarVenda } = await import('./fila.ts');
+    const { initDb, listVendas, upsertVenda } = await import('./src/store.ts');
+    const { processarVenda } = await import('./src/fila.ts');
     const db = initDb(':memory:');
     db.prepare('INSERT INTO mapa_produtos (produto, ctrib_nac, cnbs, xdesc_serv) VALUES (?, ?, ?, ?)')
       .run('produto-teste', '080201', '122051900', 'Servico');
@@ -132,8 +132,8 @@ test("fila não reserva Venda quando o fencing falha antes da reserva", () => {
 test("fila encerra com código 1 quando a transição da tentativa não muda", () => {
   const outputDir = mkdtempSync(join(tmpdir(), "nfse-fila-transicao-"));
   const result = executarFila(`
-    const { initDb, listVendas, upsertVenda } = await import('./store.ts');
-    const { processarVenda } = await import('./fila.ts');
+    const { initDb, listVendas, upsertVenda } = await import('./src/store.ts');
+    const { processarVenda } = await import('./src/fila.ts');
     const db = initDb(':memory:');
     db.prepare('INSERT INTO mapa_produtos (produto, ctrib_nac, cnbs, xdesc_serv) VALUES (?, ?, ?, ?)')
       .run('produto-teste', '080201', '122051900', 'Servico');
@@ -157,8 +157,8 @@ test("fila encerra com código 1 quando a transição da tentativa não muda", (
 test("fila não grava corpo pessoal da SEFIN na Venda nem no console", () => {
   const outputDir = mkdtempSync(join(tmpdir(), "nfse-fila-diagnostico-"));
   const result = executarFila(`
-    const { initDb, listVendas, upsertVenda } = await import('./store.ts');
-    const { processarVenda } = await import('./fila.ts');
+    const { initDb, listVendas, upsertVenda } = await import('./src/store.ts');
+    const { processarVenda } = await import('./src/fila.ts');
     const db = initDb(':memory:');
     db.prepare('INSERT INTO mapa_produtos (produto, ctrib_nac, cnbs, xdesc_serv) VALUES (?, ?, ?, ?)')
       .run('produto-teste', '080201', '122051900', 'Servico');
@@ -192,8 +192,8 @@ test("fila não grava corpo pessoal da SEFIN na Venda nem no console", () => {
 test("fila mostra a mensagem do validador para CEP inválido", () => {
   const outputDir = mkdtempSync(join(tmpdir(), "nfse-fila-validacao-"));
   const result = executarFila(`
-    const { initDb, listVendas, upsertVenda } = await import('./store.ts');
-    const { processarVenda } = await import('./fila.ts');
+    const { initDb, listVendas, upsertVenda } = await import('./src/store.ts');
+    const { processarVenda } = await import('./src/fila.ts');
     const db = initDb(':memory:');
     db.prepare('INSERT INTO mapa_produtos (produto, ctrib_nac, cnbs, xdesc_serv) VALUES (?, ?, ?, ?)')
       .run('produto-teste', '080201', '122051900', 'Servico');

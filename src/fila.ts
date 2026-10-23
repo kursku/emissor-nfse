@@ -2,7 +2,7 @@
  * fila.ts — Processador da fila de emissão NFS-e
  *
  * Uso:
- *   npx tsx fila.ts [--limite N]
+ *   nfse fila [--limite N]
  *
  * MODO SIMULAÇÃO (padrão):
  *   Monta a DPS, gera XML via xml2js (igual à lib), valida contra o XSD
@@ -55,7 +55,7 @@ import { ErroAntesDoEnvio, ehErroAntesDoEnvio } from './emissao-erros.js';
 // ─── Constantes ────────────────────────────────────────────────────────────────
 
 const MODO_REAL = process.env['EMITIR_REAL'] === '1';
-const LOCK_PATH = join(dirname(fileURLToPath(import.meta.url)), 'output', '.fila-real.lock');
+const LOCK_PATH = join(dirname(dirname(fileURLToPath(import.meta.url))), 'output', '.fila-real.lock');
 
 type EmitirNfse = (input: EmissaoInput, antesDoEnvio?: () => void) => Promise<unknown>;
 
@@ -358,7 +358,7 @@ async function main(): Promise<void> {
   }
 }
 
-// Só roda main() quando executado diretamente (npx tsx fila.ts) — importar o
+// Só roda main() quando executado diretamente (nfse fila) — importar o
 // módulo em teste (para os helpers puros acima) não deve disparar a fila real.
 const isMain = process.argv[1] === fileURLToPath(import.meta.url);
 if (isMain) {

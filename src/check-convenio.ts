@@ -2,7 +2,7 @@
  * check-convenio.ts — verifica se o município aderiu ao Convênio NFS-e Nacional
  * e consulta a alíquota vigente do serviço na competência atual.
  *
- * Uso: npx tsx check-convenio.ts [cTribNac]
+ * Uso: nfse check [cTribNac]
  *   cTribNac: item da LC 116 com 6 dígitos (default 080201 — instrução/treinamento)
  *
  * Sem adesão ao Convênio, a emissão pela SEFIN Nacional não funciona — o caminho

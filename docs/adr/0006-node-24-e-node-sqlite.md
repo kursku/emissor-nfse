@@ -43,7 +43,7 @@ quem não programa.
 - O aviso `ExperimentalWarning: SQLite is an experimental feature` aparece a
   cada execução. É ruído, e pode assustar quem não conhece.
 - A API pode mudar entre versões do Node enquanto estiver marcada como
-  experimental, exigindo ajuste em `store.ts`.
+  experimental, exigindo ajuste em `src/store.ts`.
 
 ## Alternativas consideradas
 

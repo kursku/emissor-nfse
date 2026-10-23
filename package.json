@@ -19,13 +19,13 @@
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
-    "test": "node --import tsx --test *.test.ts *.test.mjs integracoes/*.test.ts",
+    "test": "node --import tsx --test src/*.test.ts src/*.test.mjs src/painel/*.test.ts examples/*.test.mjs bin/*.test.mjs certs/*.test.mjs scripts/*.test.mjs integracoes/*.test.ts",
     "check": "npm run typecheck && npm test",
     "patch:apply": "patch-package",
-    "prepare": "node prepare.mjs"
+    "prepare": "node bin/prepare.mjs"
   },
   "bin": {
-    "nfse": "./cli.mjs"
+    "nfse": "./bin/cli.mjs"
   },
   "dependencies": {
     "@nfewizard/nfse": "1.0.7",

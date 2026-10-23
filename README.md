@@ -21,7 +21,7 @@ de notas e envio por e-mail.
 
 - Em desenvolvimento, e já emitiu NFS-e autorizada em produção: DPS assinada
   com certificado A1, aceita pela SEFIN Nacional, com XML e DANFSe
-  arquivados. O caminho completo está descrito em `tickets.md`.
+  arquivados. O caminho completo está descrito em `docs/primeira-nota.md`.
 - Testes e verificação de tipos rodam em Windows e Linux no CI. A **emissão
   com certificado** só foi exercitada em Windows: o contorno de OpenSSL
   legado (o `.p12` usa cifra antiga) aponta para o OpenSSL do Git for
@@ -84,7 +84,7 @@ Antes de 01/12/2026 a emissão real em produção fica bloqueada (veja Status).
 | `check` | `nfse check [cTribNac]` | verifica adesão do município ao Convênio Nacional e a alíquota vigente |
 | `painel` | `nfse painel` | abre o painel web em `http://localhost:3000` |
 | `fila` | `nfse fila [--limite N] [--real]` | processa a fila de vendas (simulação por padrão; `--real` emite de verdade) |
-| `emitir` | `nfse emitir <nota.json> --real` | emite uma nota avulsa a partir de um JSON (ver `nota-exemplo.json`) |
+| `emitir` | `nfse emitir <nota.json> --real` | emite uma nota avulsa a partir de um JSON (ver `examples/nota-exemplo.json`) |
 | `importar` | `nfse importar <planilha.xlsx>` | importa o relatório `sales_list` da Lastlink para o banco |
 | `contratos` | `nfse contratos <criar\|listar\|atualizar\|desativar\|gerar>` | contratos recorrentes: cadastra uma vez, gera as vendas do mês |
 | `arquivar` | `nfse arquivar <id_venda>` | salva XML e DANFSe da nota em `output/notas/<AAAA-MM>/<id_venda>/` |
@@ -106,7 +106,7 @@ equivalente sem tocar na emissão em si.
 
 ## Saiba mais
 
-- Glossário de domínio (termos fiscais e vocabulário interno): `CONTEXT.md`
+- Glossário de domínio (termos fiscais e vocabulário interno): `docs/GLOSSARY.md`
 - Decisões de arquitetura registradas: `docs/adr/`
 - Como contribuir, rodar testes e propor mudança em código fiscal:
   `CONTRIBUTING.md`
@@ -256,7 +256,7 @@ errado pode gerar problema com a prefeitura ou com a Receita.
    para você:
 
    ```
-   node setup.mjs
+   node bin/setup.mjs
    ```
 
    (Depois do passo 5 abaixo, o mesmo assistente atende por `nfse setup`.)
@@ -282,7 +282,7 @@ errado pode gerar problema com a prefeitura ou com a Receita.
    npm link
    ```
 
-   Sem esse passo, use `node cli.mjs <comando>` de dentro da pasta do
+   Sem esse passo, use `node bin/cli.mjs <comando>` de dentro da pasta do
    projeto — é exatamente a mesma coisa. Rode `nfse --help` para ver todos os
    comandos.
 
@@ -505,8 +505,8 @@ envie manualmente.
 
 - **Falha de TLS/conexão com a SEFIN Nacional:** normalmente é um problema na
   cadeia de certificados (CAs) reconhecida pelo sistema. O projeto já inclui
-  um `ca_bundle.crt` para resolver isso — confira se o arquivo está presente
-  na pasta do projeto.
+  um `certs/ca_bundle.crt` para resolver isso — confira se o arquivo está
+  presente nessa pasta do projeto.
 
 - **`Bundle @nfewizard/nfse sem o patch NT 009`:** os patches de
   `patches/` não foram aplicados (por exemplo, depois de um `npm ci` sem o

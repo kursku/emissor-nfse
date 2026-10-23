@@ -53,6 +53,13 @@ test('validador exige endereço quando o cIndOp torna o Tomador obrigatório', (
   );
 });
 
+test('validador central recusa CST sem indicador ind_gIBSCBS confirmado', () => {
+  assert.throws(
+    () => exigirEmissaoValida({ ...INPUT, cClassTrib: '200052' }),
+    /cClassTrib 200052: CST 200 sem indicador ind_gIBSCBS confirmado/,
+  );
+});
+
 test('validador exige CPF, CNPJ e CEP sem pontuação', () => {
   assert.throws(
     () => exigirEmissaoValida({
@@ -97,14 +104,14 @@ test('avulsa deixa as regras fiscais para o validador central', () => {
 });
 
 test('instalacao documentada aplica o patch local', () => {
-  const cli = readFileSync(new URL('./cli.mjs', import.meta.url), 'utf8');
+  const cli = readFileSync(new URL('../bin/cli.mjs', import.meta.url), 'utf8');
   assert.match(cli, /npm ci/);
   assert.match(cli, /npm run patch:apply/);
   assert.doesNotMatch(cli, /Rode "npm install"/);
 });
 
 test('setup mostra patch:apply com e sem dependências instaladas', async () => {
-  const { comandosInstalacao } = await import('./setup-passos.mjs');
+  const { comandosInstalacao } = await import('../bin/setup-passos.mjs');
   assert.deepEqual(comandosInstalacao(false), ['npm ci', 'npm run patch:apply']);
   assert.deepEqual(comandosInstalacao(true), ['npm run patch:apply']);
 });

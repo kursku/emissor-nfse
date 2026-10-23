@@ -8,8 +8,8 @@ import { tmpdir } from 'node:os';
 test('falha de certificado na fila deixa Venda retryable, não a verificar', () => {
   const outputDir = mkdtempSync(join(tmpdir(), 'nfse-fila-pre-envio-'));
   const script = `
-    const { initDb, listVendas, upsertVenda } = await import('./store.ts');
-    const { processarVenda } = await import('./fila.ts');
+    const { initDb, listVendas, upsertVenda } = await import('./src/store.ts');
+    const { processarVenda } = await import('./src/fila.ts');
     const db = initDb(':memory:');
     db.prepare('INSERT INTO mapa_produtos (produto, ctrib_nac, cnbs, xdesc_serv) VALUES (?, ?, ?, ?)')
       .run('produto-teste', '080201', '122051900', 'Servico');
@@ -54,8 +54,8 @@ test('falha de certificado na fila deixa Venda retryable, não a verificar', () 
 test('Contrato incompleto vira excecao retryable antes da reserva', () => {
   const outputDir = mkdtempSync(join(tmpdir(), 'nfse-fila-contrato-incompleto-'));
   const script = `
-    const { initDb, criarContrato, gerarVendasDoMes, listVendas, marcarStatus, recolocarVendaNaFila } = await import('./store.ts');
-    const { processarVenda } = await import('./fila.ts');
+    const { initDb, criarContrato, gerarVendasDoMes, listVendas, marcarStatus, recolocarVendaNaFila } = await import('./src/store.ts');
+    const { processarVenda } = await import('./src/fila.ts');
     const db = initDb(':memory:');
     const id = criarContrato({
       cliente_doc: '11444777000161', cliente_nome: 'Contrato legado',
@@ -107,8 +107,8 @@ test('Contrato incompleto vira excecao retryable antes da reserva', () => {
 test('Contrato com cNBS mas sem endereço vira excecao retryable antes da reserva', () => {
   const outputDir = mkdtempSync(join(tmpdir(), 'nfse-fila-contrato-endereco-'));
   const script = `
-    const { initDb, criarContrato, gerarVendasDoMes, listVendas, marcarStatus, recolocarVendaNaFila } = await import('./store.ts');
-    const { processarVenda } = await import('./fila.ts');
+    const { initDb, criarContrato, gerarVendasDoMes, listVendas, marcarStatus, recolocarVendaNaFila } = await import('./src/store.ts');
+    const { processarVenda } = await import('./src/fila.ts');
     const db = initDb(':memory:');
     const id = criarContrato({
       cliente_doc: '11444777000161', cliente_nome: 'Contrato sem endereço',
@@ -160,8 +160,8 @@ test('Contrato com cNBS mas sem endereço vira excecao retryable antes da reserv
 test('erro pré-reserva volta após corrigir o mapa fiscal e permite emitir', () => {
   const outputDir = mkdtempSync(join(tmpdir(), 'nfse-fila-retry-mapa-'));
   const script = `
-    const { initDb, listVendas, upsertVenda, marcarStatus, recolocarVendaNaFila, buscarNotaPorVenda } = await import('./store.ts');
-    const { processarVenda } = await import('./fila.ts');
+    const { initDb, listVendas, upsertVenda, marcarStatus, recolocarVendaNaFila, buscarNotaPorVenda } = await import('./src/store.ts');
+    const { processarVenda } = await import('./src/fila.ts');
     const db = initDb(':memory:');
     upsertVenda({
       id_venda: 'venda-mapa-corrigido', fonte: 'lastlink', produto: 'produto-novo', valor: 100,

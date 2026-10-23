@@ -27,7 +27,7 @@ observado.
 ## Decisão
 
 Publicar o projeto como open source, sob licença MIT, mas **só depois que o
-sistema emitir a primeira nota fiscal real** (ver `tickets.md`, ticket T8).
+sistema emitir a primeira nota fiscal real** (ver `docs/primeira-nota.md`).
 Até lá, o repositório permanece privado. A licença MIT e o aviso de ausência
 de garantia, presentes no topo do README, cobrem o uso por terceiros depois
 da publicação.

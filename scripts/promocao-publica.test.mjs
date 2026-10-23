@@ -5,11 +5,7 @@ import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import test from 'node:test';
 
-const scriptPath = join(
-  import.meta.dirname,
-  'scripts',
-  'promover-publico.ps1',
-);
+const scriptPath = join(import.meta.dirname, 'promover-publico.ps1');
 
 function encontrarPowerShell() {
   const candidatos = process.platform === 'win32'
@@ -50,7 +46,7 @@ test('promocao publica exclui o checklist interno', () => {
         '-OutputDirectory',
         exportacao,
       ],
-      { cwd: join(import.meta.dirname), encoding: 'utf8' },
+      { cwd: join(import.meta.dirname, '..'), encoding: 'utf8' },
     );
 
     assert.equal(

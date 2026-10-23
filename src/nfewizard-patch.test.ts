@@ -4,13 +4,14 @@ import { readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 
 import { NFE_SchemaValidate, XmlBuilder } from '@nfewizard/shared';
+import { gerarXmlDps } from './dps-xml.js';
 import { buscarMapaFiscal, montarInput } from './fila-helpers.js';
 import { montarDps } from './montar-dps.js';
 import type { ConfigPrestador, EmissaoInput } from './montar-dps.js';
 import { criarContrato, gerarVendasDoMes, initDb, listVendas } from './store.js';
 
 const xsd = readFileSync(
-  new URL('./node_modules/@nfewizard/shared/resources/schemas/nfse/tiposComplexos_v1.01.xsd', import.meta.url),
+  new URL('../node_modules/@nfewizard/shared/resources/schemas/nfse/tiposComplexos_v1.01.xsd', import.meta.url),
   'utf8',
 );
 
@@ -30,7 +31,7 @@ test('o XSD novo nao aceita finNFSe dentro de IBSCBS', () => {
 for (const bundle of ['index.cjs', 'index.mjs']) {
   test(`o bundle ${bundle} normaliza finNFSe em infDPS`, () => {
     const source = readFileSync(
-      new URL(`./node_modules/@nfewizard/nfse/dist/${bundle}`, import.meta.url),
+      new URL(`../node_modules/@nfewizard/nfse/dist/${bundle}`, import.meta.url),
       'utf8',
     );
     assert.match(source, /infDpsNormalizado\.finNFSe = infDps\.finNFSe/);
@@ -39,7 +40,7 @@ for (const bundle of ['index.cjs', 'index.mjs']) {
 }
 
 test('o bundle real normaliza DPS de Contrato com endereco e complemento', async () => {
-  const esmUrl = new URL('./node_modules/@nfewizard/nfse/dist/index.mjs', import.meta.url);
+  const esmUrl = new URL('../node_modules/@nfewizard/nfse/dist/index.mjs', import.meta.url);
   const { NFSeAutorizacaoService } = await import(esmUrl.href);
   const cfg: ConfigPrestador = {
     cnpj: '11222333000181',
@@ -96,11 +97,48 @@ test('o bundle real normaliza DPS de Contrato com endereco e complemento', async
 });
 
 test('os bundles reais expõem o marcador do patch NT 009', async () => {
-  const esmUrl = new URL('./node_modules/@nfewizard/nfse/dist/index.mjs', import.meta.url);
+  const esmUrl = new URL('../node_modules/@nfewizard/nfse/dist/index.mjs', import.meta.url);
   const esm = await import(esmUrl.href) as { NFSE_NT009_PATCHED?: boolean };
-  const cjs = createRequire(import.meta.url)('./node_modules/@nfewizard/nfse/dist/index.cjs') as {
+  const cjs = createRequire(import.meta.url)('../node_modules/@nfewizard/nfse/dist/index.cjs') as {
     NFSE_NT009_PATCHED?: boolean;
   };
   assert.equal(esm.NFSE_NT009_PATCHED, true);
   assert.equal(cjs.NFSE_NT009_PATCHED, true);
+});
+
+test('bundle patchado e seam geram o mesmo XML com gIBSCBS', async () => {
+  const esmUrl = new URL('../node_modules/@nfewizard/nfse/dist/index.mjs', import.meta.url);
+  const { NFSeAutorizacaoService } = await import(esmUrl.href);
+  const cfg: ConfigPrestador = {
+    cnpj: '11222333000181',
+    im: '654321',
+    codMunicipio: '3509502',
+    ambiente: 2,
+    regTrib: { opSimpNac: 3, regApTribSN: 1, regEspTrib: 0 },
+    pTotTribSN: 6,
+  };
+  const input: EmissaoInput = {
+    nDPS: '7',
+    tomador: { CNPJ: '11444777000161', xNome: 'EMPRESA EXEMPLO LTDA' },
+    xDescServ: 'Servico de exemplo.',
+    vServ: 1234.56,
+    cTribNac: '080201',
+    cNBS: '122051900',
+    cIndOp: '100301',
+    cClassTrib: '000001',
+  };
+  const environment = { getConfig: () => ({ nfse: { ambiente: 2 } }) } as any;
+  const xmlBuilder = new XmlBuilder(environment);
+  const builder = {
+    gerarXml: (...args: any[]) =>
+      (xmlBuilder.gerarXml as unknown as (...values: any[]) => string)(...args),
+    assinarXML: (xml: string) => xml,
+  };
+  const service = new NFSeAutorizacaoService(environment, {}, builder as any, {}, {}, {});
+  const dps = montarDps(input, cfg, new Date('2026-01-31T12:00:00Z'));
+  const bundleXml = (service as any).gerarXmlDPS({ infDps: dps.infDps });
+  const seamXml = gerarXmlDps(input, cfg, new Date('2026-01-31T12:00:00Z'));
+
+  assert.equal(bundleXml, seamXml);
+  assert.match(bundleXml, /<CST>000<\/CST><cClassTrib>000001<\/cClassTrib><gIBSCBS\/><\/trib>/);
 });

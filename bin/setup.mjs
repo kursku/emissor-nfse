@@ -2,17 +2,17 @@
 /**
  * setup.mjs — assistente de configuração interativo.
  *
- * `nfse setup` (ou `node setup.mjs`). Pergunta um item por vez, valida cada
+ * `nfse setup` (ou `node bin/setup.mjs`). Pergunta um item por vez, valida cada
  * resposta e escreve o `.env`. Roda sem dependências: só Node >= 20.12.
  */
 import { createInterface } from 'node:readline/promises';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
-import { cnpjInvalido, codMunicipioInvalido } from './validacoes.mjs';
+import { cnpjInvalido, codMunicipioInvalido } from '../src/validacoes.mjs';
 import { renderEnv, writeEnvFile } from './setup-env.mjs';
 import { comandosInstalacao } from './setup-passos.mjs';
 
-const BASE = import.meta.dirname;
+const BASE = join(import.meta.dirname, '..');
 const ENV_PATH = join(BASE, '.env');
 
 // ── cores ─────────────────────────────────────────────────────────────────────
