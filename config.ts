@@ -75,8 +75,7 @@ const CERT_PATH = obrigatoria('NFSE_CERT_PATH', 'caminho absoluto do certificado
  */
 export function exigirCertificado(): void {
   if (!existsSync(CERT_PATH)) {
-    console.error(`Certificado não encontrado em NFSE_CERT_PATH: ${CERT_PATH}`);
-    process.exit(1);
+    throw new Error(`Certificado não encontrado em NFSE_CERT_PATH: ${CERT_PATH}`);
   }
 }
 

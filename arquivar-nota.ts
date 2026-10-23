@@ -15,11 +15,20 @@ import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { config } from './config.js';
 import { getComCertificado } from './http-mtls.js';
+import { adnDanfseUrl } from './ambiente.mjs';
+import { chaveAcessoValida } from './chave-acesso.js';
+import { exigirIdentificadorSeguro } from './validar-emissao.js';
 
 const BASE = import.meta.dirname;
 const idVenda = process.argv[2];
 if (!idVenda) {
   console.error('Uso: npx tsx arquivar-nota.ts <id_venda>');
+  process.exit(1);
+}
+try {
+  exigirIdentificadorSeguro(idVenda, 'id da Venda');
+} catch (err: unknown) {
+  console.error(err instanceof Error ? err.message : String(err));
   process.exit(1);
 }
 
@@ -36,6 +45,10 @@ const venda = db
   .get(idVenda) as { data_venda?: string } | undefined;
 const comp = (venda?.data_venda ?? '0000-00').slice(0, 7);
 const chave = nota.chave_acesso;
+if (!chaveAcessoValida(chave)) {
+  console.error('Chave de acesso inválida no banco.');
+  process.exit(1);
+}
 
 const destDir = join(BASE, 'output', 'notas', comp, idVenda);
 mkdirSync(destDir, { recursive: true });
@@ -51,7 +64,7 @@ if (existsSync(xmlSrc)) {
 
 // DANFSe (PDF) via ADN
 
-const { status: s, contentType: ct, buf } = await getComCertificado(`https://adn.nfse.gov.br/danfse/${chave}`);
+const { status: s, contentType: ct, buf } = await getComCertificado(adnDanfseUrl(config.ambiente, chave));
 if ((ct.includes('pdf') || buf.subarray(0, 4).toString() === '%PDF') && buf.length > 1000) {
   writeFileSync(join(destDir, 'danfse.pdf'), buf);
   console.log(`PDF  -> ${join(destDir, 'danfse.pdf')} (${buf.length} bytes)`);

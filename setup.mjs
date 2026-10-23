@@ -6,9 +6,11 @@
  * resposta e escreve o `.env`. Roda sem dependências: só Node >= 20.12.
  */
 import { createInterface } from 'node:readline/promises';
-import { existsSync, writeFileSync } from 'node:fs';
+import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { cnpjInvalido, codMunicipioInvalido } from './validacoes.mjs';
+import { renderEnv, writeEnvFile } from './setup-env.mjs';
+import { comandosInstalacao } from './setup-passos.mjs';
 
 const BASE = import.meta.dirname;
 const ENV_PATH = join(BASE, '.env');
@@ -125,7 +127,7 @@ async function main() {
   }
   ok(`Node ${process.versions.node}`);
   if (!existsSync(join(BASE, 'node_modules'))) {
-    alerta('Dependencias ainda nao instaladas — rode "npm install" depois do setup.');
+    alerta('Dependencias ainda nao instaladas — rode "npm ci" e "npm run patch:apply" depois do setup.');
   } else {
     ok('Dependencias instaladas');
   }
@@ -263,33 +265,21 @@ async function main() {
   }
 
   // ── grava ───────────────────────────────────────────────────────────────────
-  const env = `# Gerado por "nfse setup". Este arquivo tem segredos: nunca versionar.
-
-# Prestador
-NFSE_CNPJ=${cnpj}
-NFSE_IM=${im}
-NFSE_UF=${uf}
-NFSE_COD_MUNICIPIO=${codMun}
-
-# Certificado A1 e-CNPJ
-NFSE_CERT_PATH=${certPath.replace(/\\/g, '/')}
-NFSE_CERT_PASSWORD=${certPass}
-
-# 1 = producao (irreversivel) | 2 = producao restrita
-NFSE_AMBIENTE=${ambiente}
-NFSE_OUTPUT_DIR=
-
-# Tributacao
-NFSE_OP_SIMP_NAC=${opSimpNac}
-NFSE_REG_AP_TRIB_SN=${regAp}
-NFSE_REG_ESP_TRIB=0
-NFSE_P_TOT_TRIB_SN=${pTot}
-
-# E-mail (Resend)
-RESEND_API_KEY=${resendKey}
-RESEND_FROM_NOTAS=${resendFrom}
-`;
-  writeFileSync(ENV_PATH, env, 'utf-8');
+  const env = renderEnv({
+    cnpj,
+    im,
+    uf,
+    codMun,
+    certPath: certPath.replace(/\\/g, '/'),
+    certPass,
+    ambiente,
+    opSimpNac,
+    regAp,
+    pTot,
+    resendKey,
+    resendFrom,
+  });
+  writeEnvFile(ENV_PATH, env);
 
   console.log(`\n${c.verde}${'═'.repeat(64)}${c.reset}`);
   console.log(`${c.bold}${c.verde}   Configuracao salva em .env${c.reset}`);
@@ -305,7 +295,9 @@ RESEND_FROM_NOTAS=${resendFrom}
   console.log(`   Tributos na nota .... ${pTot}%\n`);
 
   console.log(`${c.bold}   Proximos passos:${c.reset}`);
-  if (!existsSync(join(BASE, 'node_modules'))) console.log(`     ${c.ciano}npm install${c.reset}`);
+  for (const comando of comandosInstalacao(existsSync(join(BASE, 'node_modules')))) {
+    console.log(`     ${c.ciano}${comando}${c.reset}`);
+  }
   console.log(`     ${c.ciano}nfse check${c.reset}             verifica se seu municipio aceita o padrao nacional`);
   console.log(`     ${c.ciano}nfse fila --limite 5${c.reset}   simula, sem emitir nada`);
   console.log(`     ${c.ciano}nfse --help${c.reset}            todos os comandos\n`);

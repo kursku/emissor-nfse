@@ -9,6 +9,7 @@
 import { spawn } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
+import { ambienteFilho } from './ambiente.mjs';
 
 const BASE = import.meta.dirname;
 const TSX = join(BASE, 'node_modules', 'tsx', 'dist', 'cli.mjs');
@@ -39,6 +40,11 @@ const COMANDOS = {
     uso: 'nfse emitir <nota.json> --real',
     desc: 'emite uma nota avulsa a partir de um JSON (ver nota-exemplo.json)',
   },
+  conciliar: {
+    script: 'conciliar.ts',
+    uso: 'nfse conciliar <id_venda> --chave <chave_acesso> | --rejeitada',
+    desc: 'concilia manualmente uma emissão que ficou a verificar',
+  },
   importar: {
     script: 'integracoes/importar-lastlink.ts',
     uso: 'nfse importar <planilha.xlsx>',
@@ -46,7 +52,7 @@ const COMANDOS = {
   },
   contratos: {
     script: 'integracoes/contratos.ts',
-    uso: 'nfse contratos <criar|listar|desativar|gerar>',
+    uso: 'nfse contratos <criar|listar|atualizar|desativar|gerar>',
     desc: 'contratos recorrentes: cadastra uma vez, gera as vendas do mes',
   },
   arquivar: {
@@ -81,11 +87,12 @@ if (!alvo) {
 // setup.mjs roda com node puro — precisa funcionar antes do npm install.
 const precisaTsx = alvo.script.endsWith('.ts');
 if (precisaTsx && !existsSync(TSX)) {
-  console.error(`Dependencias nao instaladas. Rode "npm install" em ${BASE}.`);
+  console.error(`Dependencias nao instaladas. Rode "npm ci" e "npm run patch:apply" em ${BASE}.`);
   process.exit(1);
 }
 
-// --real vira EMITIR_REAL=1 e nao e repassado ao script.
+// --real vira EMITIR_REAL=1 e nao e repassado ao script; sem a flag, 0 vence
+// qualquer valor herdado do ambiente do operador.
 const real = resto.includes('--real');
 const args = resto.filter((a) => a !== '--real');
 if (real) console.log('MODO REAL: a nota sera emitida de verdade na SEFIN.\n');
@@ -93,6 +100,6 @@ if (real) console.log('MODO REAL: a nota sera emitida de verdade na SEFIN.\n');
 const alvoPath = join(BASE, alvo.script);
 const filho = spawn(process.execPath, precisaTsx ? [TSX, alvoPath, ...args] : [alvoPath, ...args], {
   stdio: 'inherit',
-  env: real ? { ...process.env, EMITIR_REAL: '1' } : process.env,
+  env: ambienteFilho(process.env, real),
 });
 filho.on('exit', (code) => process.exit(code ?? 1));

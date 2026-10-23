@@ -10,3 +10,16 @@ export function mascaraDoc(doc: string | undefined | null): string {
   if (d.length < 5) return d;
   return d.slice(0, 3) + '...' + d.slice(-2);
 }
+
+const DOCUMENTO_RE = /(?<!\d)(?:\d{2}[.\/\- ]?\d{3}[.\/\- ]?\d{3}[.\/\- ]?\d{4}[.\/\- ]?\d{2}|\d{3}[.\/\- ]?\d{3}[.\/\- ]?\d{3}[.\/\- ]?\d{2})(?!\d)/g;
+const EMAIL_RE = /(?<![A-Za-z0-9._%+\-])([A-Za-z0-9.!#$%&'*+\/=?^_`{|}~\-]+)@([A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+)(?![A-Za-z0-9.-])/g;
+
+export function mascararDocumentos(texto: string): string {
+  return texto
+    .replace(DOCUMENTO_RE, (documento) => mascaraDoc(documento))
+    .replace(EMAIL_RE, (_email, local: string, dominio: string) => `${local[0]}***@${dominio}`);
+}
+
+export function extrairDocumentosMascarados(texto: string): string[] {
+  return [...texto.matchAll(DOCUMENTO_RE)].map(([documento]) => mascaraDoc(documento));
+}

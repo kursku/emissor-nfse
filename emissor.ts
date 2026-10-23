@@ -4,14 +4,24 @@
  */
 
 import NFSe from '@nfewizard/nfse';
-import { NFSe as NFSeType } from '@nfewizard/types';
+import type { NFSe as NFSeType, NFSeConfig } from '@nfewizard/types';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import https from 'node:https';
 
 import { config, exigirCertificado } from './config.js';
-import { montarDps as montarDpsPuro } from './montar-dps.js';
+import { conferirDps } from './dps-xml.js';
+import {
+  exigirLeiauteNovoPermitido,
+  montarDps as montarDpsPuro,
+} from './montar-dps.js';
 import type { EmissaoInput } from './montar-dps.js';
+import { exigirEmissaoValida } from './validar-emissao.js';
+import { criarNfseConfig } from './nfse-config.js';
+import { silenciarLogsNfseWizard } from './nfewizard-logging.js';
+import { ErroAntesDoEnvio } from './emissao-erros.js';
+import { textoErroSefin } from './diagnostico-sefin.js';
+import { exigirBundlePatchado } from './emissor-preflight.js';
 
 // A montagem da DPS vive em montar-dps.ts (puro, testavel sem certificado).
 // Reexportado aqui para os chamadores existentes.
@@ -50,29 +60,7 @@ if (existsSync(CA_BUNDLE_PATH)) {
   console.warn('[emissor] AVISO: ca_bundle.crt nao encontrado, TLS pode falhar');
 }
 
-// Exemplo fictício — prefill do painel. Substitua pelos dados reais na emissão.
-export const DEFAULTS: EmissaoInput = {
-  nDPS: '1',
-  tomador: {
-    CNPJ: '00000000000000',
-    xNome: 'EMPRESA EXEMPLO LTDA',
-    end: {
-      cMun: '0000000',
-      CEP: '00000000',
-      xLgr: 'Rua Exemplo',
-      nro: '100',
-      xBairro: 'Centro',
-    },
-    fone: '5500000000000',
-    email: 'exemplo@exemplo.com.br',
-  },
-  xDescServ: 'Prestacao de servico de exemplo.',
-  vServ: 100.0,
-  cTribNac: '080201',
-  cNBS: '122051900',
-  cIndOp: '100301',
-  cClassTrib: '000001',
-};
+export { DEFAULTS } from './montar-dps.js';
 
 // Instância lazy — criada apenas quando emitirNfse() é chamado (modo real).
 // Não inicializar no topo do módulo: requer openssl + certificado, que falham
@@ -82,45 +70,40 @@ let _nfseWizard: NFSe | null = null;
 function getNfseWizard(): NFSe {
   if (_nfseWizard) return _nfseWizard;
   exigirCertificado();
-  _nfseWizard = new NFSe({
-    dfe: {
-      armazenarXMLAutorizacao: true,
-      pathXMLAutorizacao: join(OUTPUT_DIR, 'autorizacao'),
-      armazenarXMLRetorno: true,
-      pathXMLRetorno: join(OUTPUT_DIR, 'retorno'),
-      armazenarXMLConsulta: true,
-      pathXMLConsulta: join(OUTPUT_DIR, 'consulta'),
-      pathCertificado: CERT_PATH,
-      senhaCertificado: CERT_PASSWORD,
-      UF: config.uf,
-      CPFCNPJ: config.cnpj,
-    },
-    nfse: {
-      ambiente: config.ambiente, // 1 = producao real (irreversivel); 2 = producao restrita
-      versao: '1.01',
-    },
-    nfe: {
-      ambiente: config.ambiente,
-      versaoDF: '4.00',
-    },
-    lib: {
-      connection: { timeout: 30000 },
-      log: {
-        exibirLogNoConsole: true,
-        armazenarLogs: true,
-        pathLogs: join(OUTPUT_DIR, 'logs'),
-      },
-      useForSchemaValidation: 'validateSchemaJsBased',
-    },
-    // s any no objeto inteiro: @nfewizard/types nao exporta o tipo do
-    // construtor, entao nao ha o que anotar campo a campo.
-  } as any);
+  const nfseConfig = criarNfseConfig({
+    cnpj: config.cnpj,
+    uf: config.uf,
+    ambiente: config.ambiente,
+    certPath: CERT_PATH,
+    certPassword: CERT_PASSWORD,
+    outputDir: OUTPUT_DIR,
+  });
+  // Ticket #9 uses the current DPS layout; do not re-enable the legacy signature.
+  delete nfseConfig.lib?.assinaturaDPS;
+  silenciarLogsNfseWizard();
+  _nfseWizard = new NFSe(nfseConfig);
   return _nfseWizard;
 }
 
-export async function emitirNfse(input: EmissaoInput) {
-  const nfseData: NFSeType = { DPS: montarDps(input) };
-  const resultado = await getNfseWizard().Autorizacao(nfseData);
+export async function emitirNfse(input: EmissaoInput, antesDoEnvio?: () => void) {
+  let nfseData: NFSeType;
+  let wizard: NFSe;
+  try {
+    exigirLeiauteNovoPermitido(config.ambiente);
+    exigirBundlePatchado();
+    exigirEmissaoValida(input);
+    const conferencia = await conferirDps(input, config);
+    if (!conferencia.ok) throw new Error(`DPS inválida: ${conferencia.msg}`);
+    nfseData = { DPS: montarDps(input) as unknown as NFSeType['DPS'] };
+    wizard = getNfseWizard();
+    antesDoEnvio?.();
+  } catch (erro: unknown) {
+    if (erro instanceof ErroAntesDoEnvio) throw erro;
+    const mensagem = textoErroSefin(erro) || 'Falha antes do envio';
+    throw new ErroAntesDoEnvio(`Falha antes do envio: ${mensagem}`, { cause: erro });
+  }
+
+  const resultado = await wizard.Autorizacao(nfseData);
   writeFileSync(
     join(OUTPUT_DIR, `resultado-ndps-${input.nDPS}.json`),
     JSON.stringify(resultado, null, 2),

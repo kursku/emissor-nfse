@@ -6,6 +6,7 @@
 # Saídas: XMLs, PDFs, logs e o banco com CPF/CNPJ e e-mails de clientes (LGPD)
 output/
 tmp/
+importacoes/
 
 node_modules/
 *.log

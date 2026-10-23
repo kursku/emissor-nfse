@@ -7,6 +7,17 @@
  * certificado, sem configuracao e sem rede — este e o seam do projeto.
  */
 import type { LayoutDPS } from '@nfewizard/types';
+import { parseValorMonetario } from './valor-monetario.js';
+
+type InfoIBSCBSBase = NonNullable<LayoutDPS['infDps']['IBSCBS']>;
+
+/** Layout NT 009: finNFSe saiu de IBSCBS e passou a ser obrigatório em infDps. */
+export type LayoutDPSNovo = Omit<LayoutDPS, 'infDps'> & {
+  infDps: Omit<LayoutDPS['infDps'], 'IBSCBS'> & {
+    finNFSe: 0;
+    IBSCBS?: Omit<InfoIBSCBSBase, 'finNFSe'>;
+  };
+};
 
 export interface TomadorEndereco {
   cMun: string;
@@ -59,6 +70,32 @@ export interface ConfigPrestador {
   pTotTribSN: number;
 }
 
+// Exemplo fictício — prefill do painel. Substitua pelos dados reais na emissão.
+export const DEFAULTS: EmissaoInput = {
+  nDPS: '1',
+  tomador: {
+    CNPJ: '00000000000000',
+    xNome: 'EMPRESA EXEMPLO LTDA',
+    end: {
+      cMun: '0000000',
+      CEP: '00000000',
+      xLgr: 'Rua Exemplo',
+      nro: '100',
+      xBairro: 'Centro',
+    },
+    fone: '5500000000000',
+    email: 'exemplo@exemplo.com.br',
+  },
+  xDescServ: 'Prestacao de servico de exemplo.',
+  vServ: 100.0,
+  cTribNac: '080201',
+  cNBS: '122051900',
+  cIndOp: '100301',
+  cClassTrib: '000001',
+};
+
+export { DATA_IMPLANTACAO_NOVO_LEIAUTE, exigirLeiauteNovoPermitido } from './ambiente.mjs';
+
 /** Data e competência no fuso de São Paulo, formato exigido pelo layout. */
 export function momentoSP(agora: Date): { dhEmi: string; dCompet: string } {
   const local = agora.toLocaleString('sv-SE', {
@@ -68,13 +105,22 @@ export function momentoSP(agora: Date): { dhEmi: string; dCompet: string } {
   return { dhEmi: local.replace(' ', 'T') + '-03:00', dCompet: local.slice(0, 10) };
 }
 
+function documentoDoTomador(
+  tomador: EmissaoInput['tomador'],
+): { CPF?: string; CNPJ?: string } {
+  if (tomador.CPF) return { CPF: tomador.CPF };
+  if (tomador.CNPJ) return { CNPJ: tomador.CNPJ };
+  return {};
+}
+
 export function montarDps(
   input: EmissaoInput,
   cfg: ConfigPrestador,
   agora: Date = new Date(),
-): LayoutDPS {
+): LayoutDPSNovo {
   const { dhEmi, dCompet } = momentoSP(agora);
   const meEpp = cfg.regTrib.opSimpNac === 3;
+  const vServ = parseValorMonetario(input.vServ);
   return {
     infDps: {
       tpAmb: cfg.ambiente,
@@ -84,6 +130,7 @@ export function montarDps(
       nDPS: input.nDPS,
       dCompet,
       tpEmit: 1,
+      finNFSe: 0,
       cLocEmi: cfg.codMunicipio,
       prest: {
         CNPJ: cfg.cnpj,
@@ -99,7 +146,7 @@ export function montarDps(
       },
       toma: {
         // XSD TCInfoPessoa: choice CNPJ | CPF — decidido por tamanho do doc normalizado
-        ...(input.tomador.CPF ? { CPF: input.tomador.CPF } : { CNPJ: input.tomador.CNPJ }),
+        ...documentoDoTomador(input.tomador),
         xNome: input.tomador.xNome,
         // end é opcional no XSD (minOccurs=0) — incluir só se completo
         ...(input.tomador.end
@@ -128,7 +175,7 @@ export function montarDps(
         },
       },
       valores: {
-        vServPrest: { vServ: input.vServ },
+        vServPrest: { vServ },
         trib: {
           tribMun: { tribISSQN: 1, tpRetISSQN: 1 },
           tribFed: { piscofins: { CST: '08' } },
@@ -138,11 +185,10 @@ export function montarDps(
         },
       },
       IBSCBS: {
-        finNFSe: '0',
         cIndOp: input.cIndOp,
-        indDest: '0',
+        indDest: 0,
         valores: {
-          trib: { gIBSCBS: { CST: '000', cClassTrib: input.cClassTrib } },
+          trib: { gIBSCBS: { cClassTrib: input.cClassTrib } },
         },
       },
     },

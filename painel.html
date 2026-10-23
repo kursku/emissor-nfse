@@ -22,6 +22,7 @@
   .cnt-simulada { background: #e0f2fe; border-color: #38bdf8; }
   .cnt-pronta { background: #dcfce7; border-color: #4ade80; }
   .cnt-emitida { background: #d1fae5; border-color: #34d399; }
+  .cnt-a_verificar { background: #fef3c7; border-color: #f59e0b; }
   .cnt-erro { background: #fee2e2; border-color: #f87171; }
   .cnt-pendente_cadastro { background: #fef9c3; border-color: #facc15; }
   .cnt-aguardando_garantia { background: #fef3c7; border-color: #f59e0b; }
@@ -41,6 +42,7 @@
   .s-simulada { background: #e0f2fe; color: #0369a1; }
   .s-pronta { background: #dcfce7; color: #166534; }
   .s-emitida { background: #d1fae5; color: #065f46; }
+  .s-a_verificar { background: #fef3c7; color: #92400e; }
   .s-erro { background: #fee2e2; color: #991b1b; }
   .s-pendente_cadastro { background: #fef9c3; color: #713f12; }
   .s-aguardando_garantia { background: #fef3c7; color: #78350f; }
@@ -98,6 +100,7 @@
     <div class="contador cnt-simulada"><div class="label">Simuladas</div><div class="num" id="cnt-simulada">--</div></div>
     <div class="contador cnt-pronta"><div class="label">Prontas</div><div class="num" id="cnt-pronta">--</div></div>
     <div class="contador cnt-emitida"><div class="label">Emitidas</div><div class="num" id="cnt-emitida">--</div></div>
+    <div class="contador cnt-a_verificar"><div class="label">A verificar</div><div class="num" id="cnt-a_verificar">--</div></div>
     <div class="contador cnt-erro"><div class="label">Erros</div><div class="num" id="cnt-erro">--</div></div>
     <div class="contador cnt-pendente_cadastro"><div class="label">Pend. Cadastro</div><div class="num" id="cnt-pendente_cadastro">--</div></div>
     <div class="contador cnt-aguardando_garantia"><div class="label">Aguard. Garantia</div><div class="num" id="cnt-aguardando_garantia">--</div></div>
@@ -109,7 +112,7 @@
   <div class="acao-box">
     <div style="font-size:.85rem;font-weight:600;color:#444">Importar relatorio Lastlink (xlsx)</div>
     <div class="row">
-      <input type="text" id="importar-path" value="" placeholder="C:\caminho\para\sales_list.xlsx">
+      <input type="text" id="importar-path" value="" placeholder="C:\projeto\importacoes\sales_list.xlsx">
       <button class="btn-acao btn-importar" id="btn-importar" onclick="doImportar()">Importar</button>
     </div>
     <pre class="acao-resultado" id="res-importar"></pre>
@@ -135,6 +138,7 @@
         <option value="simulada">Simulada</option>
         <option value="pronta">Pronta</option>
         <option value="emitida">Emitida</option>
+        <option value="a_verificar">A verificar</option>
         <option value="erro">Erro</option>
         <option value="pendente_cadastro">Pendente cadastro</option>
         <option value="aguardando_garantia">Aguardando garantia</option>
@@ -182,7 +186,7 @@
     <fieldset>
       <legend>DPS</legend>
       <div class="row3">
-        <div><label>nDPS (auto-incrementa)</label><input name="nDPS" required></div>
+        <div><label>nDPS</label><div>Atribuido pelo servidor</div></div>
         <div><label>Valor do servico (R$)</label><input name="vServ" type="number" step="0.01" min="0.01" required></div>
         <div><label>ISS estimado (5%)</label><div id="iss">--</div></div>
       </div>
@@ -191,7 +195,7 @@
     <fieldset>
       <legend>Tomador</legend>
       <div class="row2">
-        <div><label>CNPJ (so digitos)</label><input name="CNPJ" pattern="\d{14}" required></div>
+        <div><label>CPF/CNPJ (so digitos)</label><input name="documento" pattern="(?:\d{11}|\d{14})" maxlength="14" inputmode="numeric" required></div>
         <div><label>Razao social</label><input name="xNome" required></div>
       </div>
       <div class="row3">
@@ -242,6 +246,7 @@ function showTab(id) {
 
 // --- Config ---
 let modoSimulacao = true;
+const painelToken = document.querySelector('meta[name="painel-token"]')?.content || '';
 fetch('/api/config').then(r => r.json()).then(cfg => {
   modoSimulacao = cfg.modoSimulacao;
   if (modoSimulacao) {
@@ -256,7 +261,7 @@ fetch('/api/config').then(r => r.json()).then(cfg => {
 // --- Contadores ---
 function carregarResumo() {
   fetch('/api/vendas/resumo').then(r => r.json()).then(d => {
-    ['total','simulada','pronta','emitida','erro','pendente_cadastro','aguardando_garantia','excecao'].forEach(k => {
+    ['total','simulada','pronta','emitida','a_verificar','erro','pendente_cadastro','aguardando_garantia','excecao'].forEach(k => {
       const el = document.getElementById('cnt-' + k);
       if (el) el.textContent = d[k] ?? 0;
     });
@@ -268,7 +273,8 @@ let paginaAtual = 1;
 let totalPaginas = 1;
 
 function badgeStatus(s) {
-  return '<span class="badge s-' + (s||'') + '">' + (s||'--') + '</span>';
+  const status = s || '';
+  return '<span class="badge s-' + escHtml(status) + '">' + escHtml(status || '--') + '</span>';
 }
 
 function carregarVendas(pg) {
@@ -293,16 +299,16 @@ function carregarVendas(pg) {
     }
 
     tbody.innerHTML = d.vendas.map(v => {
-      const data = v.data_venda ? v.data_venda.slice(0,10) : '--';
+      const data = escHtml(v.data_venda ? v.data_venda.slice(0,10) : '--');
       const produto = (v.produto || '--').slice(0, 30);
       const nome = (v.nome || '--').slice(0, 30);
-      const doc = v.cpf_cnpj || '--';
-      const valor = v.valor != null ? 'R$ ' + Number(v.valor).toFixed(2) : '--';
+      const doc = escHtml(v.cpf_cnpj || '--');
+      const valor = escHtml(v.valor != null ? 'R$ ' + Number(v.valor).toFixed(2) : '--');
       const erroCell = v.erro
         ? '<div class="erro-inline">' + escHtml(v.erro.slice(0,120)) + '</div>'
         : '';
-      const retryBtn = v.status === 'erro'
-        ? '<button class="btn-retry" onclick="doRetry(this,\'' + escHtml(v.id_venda) + '\')" title="Voltar para fila">Retry</button>'
+      const retryBtn = v.status === 'erro' || v.status === 'excecao'
+        ? '<button class="btn-retry" data-id-venda="' + escHtml(v.id_venda) + '" title="Voltar para fila">Retry</button>'
         : '';
       return '<tr>' +
         '<td>' + data + '</td>' +
@@ -314,6 +320,9 @@ function carregarVendas(pg) {
         '<td>' + erroCell + retryBtn + '</td>' +
         '</tr>';
     }).join('');
+    tbody.querySelectorAll('.btn-retry').forEach(btn => {
+      btn.addEventListener('click', () => doRetry(btn, btn.dataset.idVenda || ''));
+    });
   });
 }
 
@@ -323,7 +332,7 @@ function mudarPagina(delta) {
 }
 
 function escHtml(s) {
-  return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
 }
 
 // --- Importar ---
@@ -338,7 +347,7 @@ async function doImportar() {
   try {
     const r = await fetch('/api/importar', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', 'X-Painel-Token': painelToken },
       body: JSON.stringify({ path }),
     });
     const j = await r.json();
@@ -348,7 +357,7 @@ async function doImportar() {
       out.textContent = j.resumo || 'Importacao concluida.';
     } else {
       out.className = 'acao-resultado erro';
-      out.textContent = j.erro + '\n' + (j.detalhes || '');
+      out.textContent = j.erro || 'Falha na importacao.';
     }
   } catch (err) {
     out.style.display = 'block';
@@ -372,7 +381,7 @@ async function doSimular() {
   try {
     const r = await fetch('/api/simular', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', 'X-Painel-Token': painelToken },
       body: JSON.stringify({ limite }),
     });
     const j = await r.json();
@@ -382,7 +391,7 @@ async function doSimular() {
       out.textContent = j.resumo || 'Simulacao concluida.';
     } else {
       out.className = 'acao-resultado erro';
-      out.textContent = j.erro + '\n' + (j.detalhes || '');
+      out.textContent = j.erro || 'Falha na simulacao.';
     }
   } catch (err) {
     out.style.display = 'block';
@@ -400,7 +409,7 @@ async function doRetry(btn, idVenda) {
   try {
     const r = await fetch('/api/retry', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', 'X-Painel-Token': painelToken },
       body: JSON.stringify({ id_venda: idVenda }),
     });
     const j = await r.json();
@@ -421,7 +430,8 @@ const form = document.getElementById('form');
 const issEl = document.getElementById('iss');
 
 fetch('/api/defaults').then(r => r.json()).then(d => {
-  const flat = { ...d, ...d.tomador };
+  const tomador = d.tomador || {};
+  const flat = { ...d, ...tomador, documento: tomador.CPF || tomador.CNPJ, ...(tomador.end || {}) };
   for (const el of form.elements) {
     if (el.name && flat[el.name] !== undefined) el.value = flat[el.name];
   }
@@ -440,21 +450,8 @@ form.addEventListener('submit', async (e) => {
     alert('Emissao real desabilitada em modo simulacao.');
     return;
   }
-  const f = form.elements;
-  const payload = {
-    nDPS: f.nDPS.value.trim(),
-    vServ: parseFloat(f.vServ.value),
-    tomador: {
-      CNPJ: f.CNPJ.value.trim(), xNome: f.xNome.value.trim(),
-      cMun: f.cMun.value.trim(), CEP: f.CEP.value.trim(),
-      xLgr: f.xLgr.value.trim(), nro: f.nro.value.trim(),
-      xCpl: f.xCpl.value.trim() || undefined, xBairro: f.xBairro.value.trim(),
-      fone: f.fone.value.trim() || undefined, email: f.email.value.trim() || undefined,
-    },
-    xDescServ: f.xDescServ.value.trim(),
-    cTribNac: f.cTribNac.value.trim(), cNBS: f.cNBS.value.trim(),
-    cIndOp: f.cIndOp.value.trim(), cClassTrib: f.cClassTrib.value.trim(),
-  };
+  const { montarPayloadFormulario } = await import('/painel-payload.mjs');
+  const payload = montarPayloadFormulario(Object.fromEntries(new FormData(form).entries()));
   if (!confirm('Emitir NFS-e REAL de R$ ' + payload.vServ.toFixed(2) + ' para ' + payload.tomador.xNome + '?')) return;
   const btn = document.getElementById('btn-emitir');
   const out = document.getElementById('resultado');
@@ -462,15 +459,13 @@ form.addEventListener('submit', async (e) => {
   out.style.display = 'block'; out.className = ''; out.textContent = 'Enviando para a SEFIN Nacional...';
   try {
     const r = await fetch('/api/emitir', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Painel-Token': painelToken },
       body: JSON.stringify(payload),
     });
     const j = await r.json();
     if (j.autorizada) {
       out.className = 'ok';
-      out.textContent = 'NFS-e AUTORIZADA\n\nChave de acesso: ' + j.chaveAcesso +
-        '\n\n' + JSON.stringify(j.resultado, null, 2);
-      fetch('/api/defaults').then(r => r.json()).then(d => { form.nDPS.value = d.nDPS; });
+      out.textContent = 'NFS-e AUTORIZADA\n\nChave de acesso: ' + j.chaveAcesso;
     } else {
       out.className = 'erro';
       out.textContent = 'NAO AUTORIZADA\n\n' + JSON.stringify(j, null, 2);

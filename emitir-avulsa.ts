@@ -17,20 +17,33 @@
  * Emissão em produção é irreversível — só se corrige por substituição, no prazo
  * do município. Confira o JSON antes de rodar.
  */
-import { mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { EmissaoInput } from './montar-dps.js';
 import { config } from './config.js';
 import { conferirDps } from './dps-xml.js';
-import { initDb, proximoNDPS, registrarNota, upsertVenda } from './store.js';
 import {
-  cepInvalido,
-  cNBSInvalido,
-  cTribNacInvalido,
-  codMunicipioInvalido,
-  docTomadorInvalido,
-  vServInvalido,
-} from './validacoes.mjs';
+  buscarNotaPorVenda,
+  concluirEmissao,
+  initDb,
+  marcarTentativaAveriguar,
+  marcarTentativaRejeitada,
+  proximoNDPS,
+  criarEReservarEmissao,
+} from './store.js';
+import type { Venda } from './store.js';
+import {
+  buscarChaveNoXmlPorNdps,
+  classificarRespostaEmissao,
+  MENSAGEM_CHAVE_A_VERIFICAR,
+} from './chave-acesso.js';
+import { exigirEmissaoValida, exigirIdentificadorSeguro } from './validar-emissao.js';
+import { exigirLeiauteNovoPermitido } from './montar-dps.js';
+import { textoErroSefin } from './diagnostico-sefin.js';
+import { ErroAntesDoEnvio, ehErroAntesDoEnvio } from './emissao-erros.js';
+import { comandoConciliacao } from './emitir-avulsa-helpers.js';
+
+export { comandoConciliacao } from './emitir-avulsa-helpers.js';
 
 interface NotaAvulsa extends Omit<EmissaoInput, 'nDPS' | 'cIndOp' | 'cClassTrib'> {
   idVenda: string;
@@ -39,38 +52,9 @@ interface NotaAvulsa extends Omit<EmissaoInput, 'nDPS' | 'cIndOp' | 'cClassTrib'
   cClassTrib?: string;
 }
 
-/** Chave = nome do XML mais novo em autorizacao/ (a lib grava <chave>.xml no sucesso). */
-function chaveDoXmlMaisNovo(): string | null {
-  const dir = join(config.outputDir, 'autorizacao');
-  const xmls = readdirSync(dir).filter((f) => f.endsWith('.xml'));
-  if (xmls.length === 0) return null;
-  const novo = xmls
-    .map((f) => ({ f, m: statSync(join(dir, f)).mtimeMs }))
-    .sort((a, b) => b.m - a.m)[0];
-  return novo.f.replace(/\.xml$/, '');
-}
-
 function carregar(path: string): NotaAvulsa {
   const nota = JSON.parse(readFileSync(path, 'utf-8')) as NotaAvulsa;
-  const faltando = (
-    ['idVenda', 'tomador', 'xDescServ', 'vServ', 'cTribNac', 'cNBS'] as const
-  ).filter((k) => nota[k] === undefined || nota[k] === null);
-  if (faltando.length > 0) {
-    throw new Error(`Campos ausentes no JSON: ${faltando.join(', ')}`);
-  }
-  // Formato dos codigos fiscais: errado aqui = nota errada, e nota emitida
-  // em producao nao se desfaz.
-  const problemas = [
-    docTomadorInvalido(nota.tomador),
-    cTribNacInvalido(nota.cTribNac),
-    cNBSInvalido(nota.cNBS),
-    vServInvalido(nota.vServ),
-    nota.tomador.end ? cepInvalido(nota.tomador.end.CEP) : null,
-    nota.tomador.end ? codMunicipioInvalido(nota.tomador.end.cMun) : null,
-  ].filter(Boolean);
-  if (problemas.length > 0) {
-    throw new Error(`JSON invalido:\n  - ${problemas.join('\n  - ')}`);
-  }
+  exigirIdentificadorSeguro(nota.idVenda, 'id da Venda');
   return nota;
 }
 
@@ -131,7 +115,7 @@ async function main(): Promise<void> {
   }
   const nota = carregar(jsonPath);
   initDb();
-  const nDPS = String(proximoNDPS());
+  const nDPS = String(proximoNDPS(config.outputDir));
 
   const input: EmissaoInput = {
     nDPS,
@@ -144,6 +128,7 @@ async function main(): Promise<void> {
     cClassTrib: nota.cClassTrib ?? '000001',
     ...(nota.pTotTribSN !== undefined ? { pTotTribSN: nota.pTotTribSN } : {}),
   };
+  exigirEmissaoValida(input, { idVenda: nota.idVenda });
 
   // Sem --real: confere e para. Onde o municipio nao tem producao restrita,
   // esta e a unica conferencia possivel antes de a nota valer de verdade.
@@ -152,25 +137,13 @@ async function main(): Promise<void> {
     return;
   }
 
-  console.log(`Emitindo nDPS=${nDPS} para ${input.tomador.xNome} (${nota.idVenda})...`);
-  // Só aqui o emissor entra: importar no topo criaria diretórios e trocaria o
-  // agente HTTPS global mesmo numa conferência.
-  const { emitirNfse } = await import('./emissor.js');
-  const resultado = await emitirNfse(input);
-  const r = resultado as Record<string, unknown>;
-  let chave = (r['chNFSe'] as string) ?? (r['chaveAcesso'] as string) ?? '';
-  // Fallback: a lib às vezes não parseia o retorno; pega a chave do XML autorizado gravado.
-  if (!/^\d{50}$/.test(chave)) {
-    chave = chaveDoXmlMaisNovo() ?? '';
-  }
-  if (!/^\d{50}$/.test(chave)) {
-    throw new Error(
-      `Nota autorizada mas chave não capturada (valor: "${chave}"). Ver ${join(config.outputDir, 'autorizacao')}.`,
-    );
+  exigirLeiauteNovoPermitido(config.ambiente);
+  if (buscarNotaPorVenda(nota.idVenda)) {
+    console.log(`Venda ${nota.idVenda} já possui Nota. Emissão não enviada.`);
+    return;
   }
 
-  // notas.id_venda tem FK para vendas — garante a linha antes de registrar.
-  upsertVenda({
+  const venda: Venda = {
     id_venda: nota.idVenda,
     fonte: 'avulsa',
     produto: nota.produto ?? 'avulsa',
@@ -180,22 +153,108 @@ async function main(): Promise<void> {
     nome: input.tomador.xNome,
     ...(input.tomador.email ? { email: input.tomador.email } : {}),
     fila: 'pronta',
-    status: 'emitida',
-  });
-  registrarNota({
-    chave_acesso: chave,
-    ndps: Number(nDPS),
-    id_venda: nota.idVenda,
-    emitida_em: new Date().toISOString(),
-  });
+    status: 'pronta',
+  };
+  const tentativa = criarEReservarEmissao(venda, config.outputDir);
+  if (!tentativa) {
+    if (buscarNotaPorVenda(nota.idVenda)) {
+      console.log(`Venda ${nota.idVenda} já possui Nota. Emissão não enviada.`);
+      return;
+    }
+    throw new Error(`Venda ${nota.idVenda} não está disponível para emissão.`);
+  }
+  input.nDPS = String(tentativa.ndps);
+
+  console.log(`Emitindo nDPS=${input.nDPS} para ${input.tomador.xNome} (${nota.idVenda})...`);
+  // Só aqui o emissor entra: importar no topo criaria diretórios e trocaria o
+  // agente HTTPS global mesmo numa conferência.
+  let resultado: unknown;
+  try {
+    let emitirNfse: (input: EmissaoInput) => Promise<unknown>;
+    try {
+      ({ emitirNfse } = await import('./emissor.js'));
+    } catch (err: unknown) {
+      const detalhe = textoErroSefin(err) || 'erro não detalhado';
+      throw new ErroAntesDoEnvio(`Falha ao carregar emissor antes do envio: ${detalhe}`, { cause: err });
+    }
+    resultado = await emitirNfse(input);
+  } catch (err: unknown) {
+    const mensagem = textoErroSefin(err) || 'Falha na emissão';
+    try {
+      if (ehErroAntesDoEnvio(err)) marcarTentativaRejeitada(nota.idVenda, mensagem);
+      else marcarTentativaAveriguar(nota.idVenda, mensagem);
+    } catch (secundario: unknown) {
+      console.error(`[avulsa] Falha ao marcar resultado da emissão: ${textoErroSefin(secundario) || 'erro não detalhado'}`);
+      console.error(`Conciliação manual: ${comandoConciliacao(nota.idVenda, undefined, ehErroAntesDoEnvio(err))}`);
+    }
+    throw err;
+  }
+  let decisao: ReturnType<typeof classificarRespostaEmissao>;
+  try {
+    decisao = classificarRespostaEmissao(resultado);
+  } catch (err: unknown) {
+    const mensagem = textoErroSefin(err) || 'Falha ao classificar resposta da emissão';
+    try { marcarTentativaAveriguar(nota.idVenda, mensagem); } catch (secundario: unknown) {
+      console.error(`[avulsa] Falha ao marcar resposta ambígua: ${textoErroSefin(secundario) || 'erro não detalhado'}`);
+      console.error(`Conciliação manual: ${comandoConciliacao(nota.idVenda)}`);
+    }
+    throw err;
+  }
+  if (decisao.estado === 'rejeitada') {
+    try { marcarTentativaRejeitada(nota.idVenda, decisao.mensagem); } catch (secundario: unknown) {
+      console.error(`[avulsa] Falha ao marcar rejeição: ${textoErroSefin(secundario) || 'erro não detalhado'}`);
+      console.error(`Conciliação manual: ${comandoConciliacao(nota.idVenda, undefined, true)}`);
+    }
+    throw new Error(decisao.mensagem);
+  }
+
+  if (decisao.estado === 'autorizada' && decisao.codigos.length > 0) {
+    console.warn(`Avisos SEFIN (nota autorizada): ${decisao.codigos.join(', ')}`);
+  }
+  let chave = decisao.estado === 'autorizada' ? decisao.chave : null;
+  if (decisao.estado === 'sucesso_sem_chave') {
+    try {
+      chave = buscarChaveNoXmlPorNdps(config.outputDir, input.nDPS);
+    } catch (err: unknown) {
+      const detalhe = textoErroSefin(err) || 'erro não detalhado';
+      const mensagem = `${MENSAGEM_CHAVE_A_VERIFICAR} Falha ao ler XML autorizado: ${detalhe}`;
+      try { marcarTentativaAveriguar(nota.idVenda, mensagem); } catch (secundario: unknown) {
+        console.error(`[avulsa] Falha ao marcar falha de leitura: ${textoErroSefin(secundario) || 'erro não detalhado'}`);
+        console.error(`Conciliação manual: ${comandoConciliacao(nota.idVenda)}`);
+      }
+      throw new Error(mensagem);
+    }
+  }
+  if (!chave) {
+    const mensagem = `${MENSAGEM_CHAVE_A_VERIFICAR} Verifique ${join(config.outputDir, 'autorizacao')}.`;
+    try { marcarTentativaAveriguar(nota.idVenda, mensagem); } catch (secundario: unknown) {
+      console.error(`[avulsa] Falha ao marcar Chave ausente: ${textoErroSefin(secundario) || 'erro não detalhado'}`);
+      console.error(`Conciliação manual: ${comandoConciliacao(nota.idVenda)}`);
+    }
+    throw new Error(mensagem);
+  }
+
+  try {
+    concluirEmissao({
+      chave_acesso: chave,
+      ndps: Number(input.nDPS),
+      id_venda: nota.idVenda,
+      emitida_em: new Date().toISOString(),
+    });
+  } catch (err: unknown) {
+    const mensagem = textoErroSefin(err) || 'Falha ao persistir a emissão';
+    try { marcarTentativaAveriguar(nota.idVenda, mensagem); } catch (secundario: unknown) {
+      console.error(`[avulsa] Falha ao marcar falha de persistência: ${textoErroSefin(secundario) || 'erro não detalhado'}`);
+      console.error(`Conciliação manual: ${comandoConciliacao(nota.idVenda, chave)}`);
+    }
+    throw err;
+  }
 
   console.log(`AUTORIZADA. chave=${chave}`);
   console.log(`Arquivar: npx tsx arquivar-nota.ts ${nota.idVenda}`);
 }
 
 main().catch((err) => {
-  // Erro completo, com stack: e o caminho de emissao real e irreversivel —
-  // diagnostico truncado aqui custa caro.
-  console.error('FALHA na emissão:', err);
+  console.error('FALHA na emissão:', textoErroSefin(err) || 'Falha na emissão');
   process.exit(1);
 });

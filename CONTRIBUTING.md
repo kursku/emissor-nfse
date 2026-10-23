@@ -8,7 +8,8 @@ regras abaixo existem por causa disso, não por formalidade.
 ## Como rodar
 
 ```
-npm install
+npm ci --ignore-scripts
+npm run patch:apply
 npm run check
 ```
 

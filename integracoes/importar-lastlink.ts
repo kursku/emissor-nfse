@@ -33,6 +33,7 @@ import { initDb, upsertVenda, listVendas } from "../store.js";
 import type { Venda } from "../store.js";
 import { parseEnderecoLastlink } from "./endereco-lastlink.js";
 import type { EnderecoLastlink } from "./endereco-lastlink.js";
+import { parseValorMonetario } from "../valor-monetario.js";
 
 // ─── Endereco e codigo do municipio ───────────────────────────────────────────
 
@@ -99,9 +100,42 @@ export function str(v: unknown): string {
   return String(v).trim();
 }
 
-export function parseNum(v: unknown): number {
-  const n = parseFloat(String(v));
-  return isNaN(n) ? 0 : n;
+function preenchido(v: unknown): boolean {
+  return v !== undefined && v !== null && !(typeof v === "string" && v.trim() === "");
+}
+
+function tentarParseValor(v: unknown): number | undefined {
+  if (!preenchido(v)) return undefined;
+  try {
+    return parseValorMonetario(v);
+  } catch {
+    return undefined;
+  }
+}
+
+interface ValoresMonetariosVenda {
+  comissao: number | undefined;
+  valorBruto: number | undefined;
+  validos: boolean;
+}
+
+function validarValoresMonetarios(row: RawRow): ValoresMonetariosVenda {
+  const comissao = tentarParseValor(row["Comissão total de coprodutores"]);
+  const valorBruto = tentarParseValor(row["Valor da venda"]);
+  const comissaoInvalida =
+    preenchido(row["Comissão total de coprodutores"]) && comissao === undefined;
+  const valorBrutoInvalido = preenchido(row["Valor da venda"]) && valorBruto === undefined;
+
+  return {
+    comissao,
+    valorBruto,
+    validos:
+      !comissaoInvalida &&
+      !valorBrutoInvalido &&
+      comissao !== undefined &&
+      comissao > 0 &&
+      (valorBruto === undefined || comissao <= valorBruto),
+  };
 }
 
 /**
@@ -134,10 +168,10 @@ export function classificarFila(
 ): "excecao" | "pendente_cadastro" | "aguardando_garantia" | "pronta_sem_endereco" | "pronta" {
   const produto = str(row["Produto principal"]);
   const isEstrangeiro = str(row["Sou Estrangeiro"]).toLowerCase() === "sim";
-  const comissao = parseNum(row["Comissão total de coprodutores"]);
+  const valores = validarValoresMonetarios(row);
 
-  // excecao: estrangeiro, produto sem mapa, ou comissão zerada em linha Aprovada
-  if (isEstrangeiro || !produtosMapeados.has(produto) || comissao <= 0) {
+  // excecao: estrangeiro, produto sem mapa, comissão inválida/zerada ou maior que o bruto
+  if (isEstrangeiro || !produtosMapeados.has(produto) || !valores.validos) {
     return "excecao";
   }
 
@@ -171,17 +205,17 @@ export function normalizarVenda(
   const id_venda = str(row["Identificador da venda"]);
   const temEnderecoCompleto = Boolean(end && cmun);
   const fila = classificarFila(row, hoje, temEnderecoCompleto, produtosMapeados);
-  const comissao = parseNum(row["Comissão total de coprodutores"]);
-  const valorBruto = parseNum(row["Valor da venda"]);
+  const valores = validarValoresMonetarios(row);
+  const { comissao, valorBruto } = valores;
 
   return {
     id_venda,
     fonte: "lastlink",
     produto: str(row["Produto principal"]) || undefined,
     // valor = comissão do coprodutor = valor da NFS-e
-    valor: comissao > 0 ? comissao : undefined,
+    valor: valores.validos ? comissao : undefined,
     // valor_bruto = preço cheio pago pelo cliente
-    valor_bruto: valorBruto > 0 ? valorBruto : undefined,
+    valor_bruto: valorBruto !== undefined && valorBruto > 0 ? valorBruto : undefined,
     data_venda: excelSerialToIso(row["Data da Venda"]),
     data_expiracao: excelSerialToIso(row["Data da expiração"]),
     status_lastlink: str(row["Status da venda"]) || undefined,

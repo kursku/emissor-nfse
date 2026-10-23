@@ -8,21 +8,55 @@
 import type { DatabaseSync } from 'node:sqlite';
 import type { Venda } from './store.js';
 import type { EmissaoInput } from './montar-dps.js';
+import { mascaraDoc } from './mascara.js';
+
+export function deveInterromperFilaAposVerificacao(
+  modoReal: boolean,
+  resultado: string,
+): boolean {
+  return modoReal && resultado === 'a_verificar';
+}
 
 /** Remove não-dígitos e devolve string limpa */
 function soDigitos(v: string | undefined | null): string {
   return (v ?? '').replace(/\D/g, '');
 }
 
+export const C_IND_OP_COM_ENDERECO = '100301';
+
+export function cIndOpExigeEndereco(cIndOp: unknown): boolean {
+  return cIndOp === C_IND_OP_COM_ENDERECO;
+}
+
 /** Mapeia produto do banco para os campos fiscais via mapa_produtos */
+export interface MapaFiscal {
+  ctrib_nac: string;
+  cnbs: string;
+  xdesc_serv: string;
+}
+
 export function buscarMapaProduto(
   db: DatabaseSync,
   produto: string,
-): { ctrib_nac: string; cnbs: string; xdesc_serv: string } | null {
+): MapaFiscal | null {
   const row = db
     .prepare('SELECT ctrib_nac, cnbs, xdesc_serv FROM mapa_produtos WHERE produto = ?')
-    .get(produto) as { ctrib_nac: string; cnbs: string; xdesc_serv: string } | undefined;
+    .get(produto) as unknown as MapaFiscal | undefined;
   return row ?? null;
+}
+
+/** Contratos mantêm os próprios códigos; Vendas importadas usam mapa_produtos. */
+export function buscarMapaFiscal(
+  db: DatabaseSync,
+  venda: Pick<Venda, "contrato_id" | "produto">,
+): MapaFiscal | null {
+  if (venda.contrato_id !== undefined && venda.contrato_id !== null) {
+    const row = db
+      .prepare("SELECT ctrib_nac, cnbs, xdesc_serv FROM contratos WHERE id = ? AND cnbs IS NOT NULL AND cnbs <> ''")
+      .get(venda.contrato_id) as unknown as MapaFiscal | undefined;
+    return row ?? null;
+  }
+  return buscarMapaProduto(db, venda.produto ?? "");
 }
 
 /**
@@ -35,7 +69,7 @@ export function buscarMapaProduto(
  */
 export function montarInput(
   venda: Venda,
-  mapa: { ctrib_nac: string; cnbs: string; xdesc_serv: string },
+  mapa: MapaFiscal,
   nDPS: string,
 ): EmissaoInput {
   const docRaw = soDigitos(venda.cpf_cnpj);
@@ -44,7 +78,7 @@ export function montarInput(
 
   if (!isCpf && !isCnpj) {
     throw new Error(
-      `Documento inválido para id_venda=${venda.id_venda}: "${venda.cpf_cnpj}" (normalizado: "${docRaw}", tamanho=${docRaw.length})`,
+      `Documento inválido para id_venda=${venda.id_venda}: "${mascaraDoc(venda.cpf_cnpj)}" (tamanho=${docRaw.length})`,
     );
   }
 
@@ -69,6 +103,7 @@ export function montarInput(
               xLgr: venda.rua!,
               nro: venda.numero!,
               xBairro: venda.bairro!,
+              ...(venda.complemento ? { xCpl: venda.complemento } : {}),
             },
           }
         : {}),
@@ -78,7 +113,7 @@ export function montarInput(
     vServ: venda.valor!,
     cTribNac: mapa.ctrib_nac,
     cNBS: mapa.cnbs,
-    cIndOp: '100301',
+    cIndOp: C_IND_OP_COM_ENDERECO,
     cClassTrib: '000001',
   };
 }

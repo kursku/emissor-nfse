@@ -57,7 +57,8 @@ NFS-e Nacional, e não desfaz uma nota já emitida em produção.
 ## Quick start
 
 ```
-npm install
+npm ci
+npm run patch:apply
 nfse setup
 nfse check
 nfse fila --limite 5
@@ -77,7 +78,7 @@ simulação por padrão. Emitir de verdade exige definir `NFSE_AMBIENTE=1` no
 | `fila` | `nfse fila [--limite N] [--real]` | processa a fila de vendas (simulação por padrão; `--real` emite de verdade) |
 | `emitir` | `nfse emitir <nota.json> --real` | emite uma nota avulsa a partir de um JSON (ver `nota-exemplo.json`) |
 | `importar` | `nfse importar <planilha.xlsx>` | importa o relatório `sales_list` da Lastlink para o banco |
-| `contratos` | `nfse contratos <criar\|listar\|desativar\|gerar>` | contratos recorrentes: cadastra uma vez, gera as vendas do mês |
+| `contratos` | `nfse contratos <criar\|listar\|atualizar\|desativar\|gerar>` | contratos recorrentes: cadastra uma vez, gera as vendas do mês |
 | `arquivar` | `nfse arquivar <id_venda>` | salva XML e DANFSe da nota em `output/notas/<AAAA-MM>/<id_venda>/` |
 
 Rode `nfse --help` para ver esta mesma lista a qualquer momento.
@@ -222,12 +223,25 @@ errado pode gerar problema com a prefeitura ou com a Receita.
 
 ## 3. Instalação
 
-1. Instale o Node.js versão 20.12 ou mais recente.
-2. Na pasta do projeto, instale as dependências:
+1. Instale o Node.js versão 24 ou mais recente.
+2. Na pasta do projeto, instale as dependências. Em máquinas com Java:
 
    ```
-   npm install
+   npm ci
+   npm run patch:apply
    ```
+
+   Em máquinas sem Java, desative os scripts durante a instalação e recompile
+   os binários nativos:
+
+   ```
+   npm ci --ignore-scripts
+   npm rebuild esbuild libxmljs2
+   npm run patch:apply
+   ```
+
+   O segundo comando aplica os patches locais do leiaute NT 009; a instalação
+   não depende de `postinstall`.
 
 3. Rode o assistente de configuração. Ele pergunta um item por vez, confere o
    CNPJ, encontra o código IBGE da sua cidade pelo nome e escreve o `.env`
@@ -305,6 +319,10 @@ nfse painel
 
 Depois acesse `http://localhost:3000` no navegador.
 
+Para importar um relatório Lastlink pelo painel, coloque o arquivo regular em
+`<projeto>/importacoes/`. O painel recusa caminhos UNC e caminhos fora dessa
+pasta.
+
 ### Simular a fila (não emite nada de verdade)
 
 ```
@@ -357,11 +375,14 @@ Cadastrar um novo contrato:
 ```
 nfse contratos criar --doc <CPF/CNPJ> --nome <nome do cliente> \
   --valor <valor mensal> --desc <descrição do serviço> --ctrib <cTribNac> \
-  [--email <e-mail>] [--cnbs <cNBS>] [--dia <dia do mês, 1-31>]
+  --cnbs <cNBS> --cmun <IBGE> --cep <CEP> --rua <logradouro> \
+  --numero <número> --bairro <bairro> [--complemento <complemento>] \
+  [--email <e-mail>] [--dia <dia do mês, 1-31>]
 ```
 
-- `--doc`, `--nome`, `--valor`, `--desc` e `--ctrib` são obrigatórios.
-- `--email` e `--cnbs` são opcionais.
+- `--doc`, `--nome`, `--valor`, `--desc`, `--ctrib`, `--cnbs`, `--cmun`,
+  `--cep`, `--rua`, `--numero` e `--bairro` são obrigatórios.
+- `--email` e `--complemento` são opcionais.
 - `--dia` é o dia do mês em que a venda deve ser gerada (padrão: 1). Se o
   mês não tiver esse dia (ex.: dia 31 em fevereiro), o sistema usa o último
   dia do mês.
@@ -381,6 +402,16 @@ apaga o histórico):
 ```
 nfse contratos desativar <id>
 ```
+
+Completar o endereço do Tomador e o cNBS de um Contrato legado:
+
+```
+nfse contratos atualizar <id> --cnbs <cNBS> --cmun <IBGE> --cep <CEP> \
+  --rua <logradouro> --numero <número> --bairro <bairro> \
+  [--complemento <complemento>]
+```
+
+Os campos do endereço e `--cnbs` são obrigatórios, assim como na criação.
 
 Gerar as vendas do mês para todos os contratos ativos:
 
@@ -461,3 +492,34 @@ completa e consulte o seu contador ou quem configurou o sistema.
 - Trate a senha do certificado (`NFSE_CERT_PASSWORD`) e a chave do Resend
   (`RESEND_API_KEY`) como senhas normais: não compartilhe, não cole em
   chats ou documentos abertos.
+
+### Limpeza de logs antigos
+
+Versões anteriores da biblioteca podiam gravar `senhaCertificado` em texto
+puro nos logs. Antes de compartilhar qualquer diagnóstico, encerre o emissor
+e localize a pasta de logs configurada em `NFSE_OUTPUT_DIR`. O padrão deste
+projeto é `<projeto>/output/nfewizard/logs`; nela podem existir `app.jsonl`,
+`error.jsonl`, `http.jsonl` e arquivos rotacionados.
+
+Desde esta correção, os logs internos da biblioteca (`http.jsonl`,
+`error.jsonl` e `app.jsonl`) deixam de ser gerados pelo emissor. O diagnóstico
+útil aparece no console do painel/fila e, no fluxo da fila, no campo de erro da
+Venda no SQLite, sempre como resumo allowlisted: código, descrição, `nDPS`,
+`idDPS`, status e complemento limitado e mascarado.
+
+Para listar somente os arquivos, sem imprimir o conteúdo que pode conter a
+senha, use no PowerShell:
+
+```
+Get-ChildItem -LiteralPath '<NFSE_OUTPUT_DIR>\\logs' -File -Recurse
+```
+
+Depois de confirmar o caminho, apague a pasta inteira e seus arquivos:
+
+```
+Remove-Item -LiteralPath '<NFSE_OUTPUT_DIR>\\logs' -Recurse -Force
+```
+
+Se a senha apareceu em algum log antigo, trate-a como exposta: considere
+exportar novamente o certificado A1 com outra senha, atualize
+`NFSE_CERT_PASSWORD` no `.env` e não cole a senha em chat, issue ou ticket.

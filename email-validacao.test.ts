@@ -7,7 +7,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { erroEnvioEmail } from "./email-validacao.js";
+import { erroEnvioEmail, montarHtmlNota } from "./email-validacao.js";
 
 test("erroEnvioEmail acusa venda sem e-mail antes de checar credenciais", () => {
   assert.equal(
@@ -23,6 +23,22 @@ test("erroEnvioEmail acusa RESEND_API_KEY ausente quando o e-mail existe", () =>
   );
 });
 
+test("erroEnvioEmail recusa destinatario que nao segue a regra estrita", () => {
+  for (const email of [
+    "cliente",
+    "cliente@",
+    "cliente @exemplo.com",
+    "cliente@exemplo",
+    "cliente@exemplo.com\nBcc: atacante@exemplo.com",
+  ]) {
+    assert.equal(
+      erroEnvioEmail({ email, apiKey: "chave", from: "nfse@exemplo.com" }),
+      "venda com e-mail inválido",
+      email,
+    );
+  }
+});
+
 test("erroEnvioEmail acusa remetente ausente quando e-mail e chave existem", () => {
   assert.equal(
     erroEnvioEmail({ email: "cliente@exemplo.com.br", apiKey: "chave", from: undefined }),
@@ -35,4 +51,11 @@ test("erroEnvioEmail retorna null quando todos os pre-requisitos estao presentes
     erroEnvioEmail({ email: "cliente@exemplo.com.br", apiKey: "chave", from: "nfse@exemplo.com" }),
     null,
   );
+});
+
+test("montarHtmlNota escapa nome do Tomador antes de montar o corpo", () => {
+  const html = montarHtmlNota('<img src=x onerror="alert(1)">', "chave-1", false);
+
+  assert.match(html, /&lt;img src=x onerror=&quot;alert\(1\)&quot;&gt;/);
+  assert.doesNotMatch(html, /<img|onerror="/);
 });

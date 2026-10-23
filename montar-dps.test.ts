@@ -7,8 +7,14 @@
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 
-import { montarDps, momentoSP } from './montar-dps.js';
+import {
+  DATA_IMPLANTACAO_NOVO_LEIAUTE,
+  exigirLeiauteNovoPermitido,
+  montarDps,
+  momentoSP,
+} from './montar-dps.js';
 import type { ConfigPrestador, EmissaoInput } from './montar-dps.js';
 
 const CFG: ConfigPrestador = {
@@ -41,6 +47,24 @@ test('prestador e local de emissao vem da configuracao, nao do input', () => {
   assert.equal(infDps.cLocEmi, '3509502');
   assert.equal(infDps.serv.locPrest.cLocPrestacao, '3509502');
   assert.equal(infDps.tpAmb, 2);
+});
+
+test('DPS regular leva finNFSe direto em infDps', () => {
+  const { infDps } = montarDps(INPUT, CFG, AGORA);
+  assert.equal(infDps.finNFSe, 0);
+  assert.equal('finNFSe' in infDps.IBSCBS, false);
+});
+
+test('ambiente 1 recusa o leiaute novo até o limite exato da implantação', () => {
+  assert.throws(
+    () => exigirLeiauteNovoPermitido(1, new Date('2026-12-01T02:59:59Z')),
+    new RegExp(`NFSE_AMBIENTE=1.*${DATA_IMPLANTACAO_NOVO_LEIAUTE}`),
+  );
+  assert.doesNotThrow(() => exigirLeiauteNovoPermitido(1, new Date('2026-12-01T03:00:00Z')));
+});
+
+test('ambiente 2 aceita o leiaute novo antes da implantação em produção', () => {
+  assert.doesNotThrow(() => exigirLeiauteNovoPermitido(2, new Date('2026-11-30T12:00:00Z')));
 });
 
 test('competencia e data de emissao no fuso de Sao Paulo', () => {
@@ -133,5 +157,19 @@ test('valor, codigos do servico e nDPS chegam intactos', () => {
   assert.equal(infDps.serv.cServ.cTribNac, '080201');
   assert.equal(infDps.serv.cServ.cNBS, '122051900');
   assert.equal(infDps.IBSCBS.cIndOp, '100301');
+  assert.equal('finNFSe' in infDps.IBSCBS, false);
+  assert.equal(infDps.IBSCBS.indDest, 0);
+  assert.equal('CST' in infDps.IBSCBS.valores.trib.gIBSCBS, false);
   assert.equal(infDps.IBSCBS.valores.trib.gIBSCBS.cClassTrib, '000001');
+});
+
+test('valor da DPS fica arredondado em duas casas', () => {
+  const { infDps } = montarDps({ ...INPUT, vServ: 59.940000000000005 }, CFG, AGORA);
+  assert.equal(infDps.valores.vServPrest.vServ, 59.94);
+});
+
+test('seleção do documento do Tomador não usa ternário aninhado', () => {
+  const source = readFileSync(new URL('./montar-dps.ts', import.meta.url), 'utf8');
+  assert.doesNotMatch(source, /input\.tomador\.CPF\s*\?/);
+  assert.match(source, /documentoDoTomador/);
 });

@@ -1,0 +1,123 @@
+diff --git a/node_modules/@nfewizard/nfse/dist/index.cjs b/node_modules/@nfewizard/nfse/dist/index.cjs
+index 400c2d4..538aba2 100644
+--- a/node_modules/@nfewizard/nfse/dist/index.cjs
++++ b/node_modules/@nfewizard/nfse/dist/index.cjs
+@@ -236,13 +236,13 @@ class NFSeAutorizacaoService extends shared.BaseNFSe {
+         if (servico.cServ.cTribMun) {
+             servicoNormalizado.cServ.cTribMun = servico.cServ.cTribMun;
+         }
+-        servicoNormalizado.cServ.xDescServ = servico.cServ.xDescServ;
+         if (servico.cServ.cNBS) {
+             servicoNormalizado.cServ.cNBS = servico.cServ.cNBS;
+         }
+         if (servico.cServ.cIntContrib) {
+             servicoNormalizado.cServ.cIntContrib = servico.cServ.cIntContrib;
+         }
++        servicoNormalizado.cServ.xDescServ = servico.cServ.xDescServ;
+         if (servico.comExt) {
+             servicoNormalizado.comExt = servico.comExt;
+         }
+@@ -317,9 +317,7 @@ class NFSeAutorizacaoService extends shared.BaseNFSe {
+         if (!ibscbs) {
+             return ibscbs;
+         }
+-        const ibscbsNormalizado = {
+-            finNFSe: ibscbs.finNFSe,
+-        };
++        const ibscbsNormalizado = {};
+         if (ibscbs.indFinal !== undefined) {
+             ibscbsNormalizado.indFinal = ibscbs.indFinal;
+         }
+@@ -351,9 +349,12 @@ class NFSeAutorizacaoService extends shared.BaseNFSe {
+                 documentos: ibscbs.valores.gReeRepRes.documentos.map((doc) => this.normalizarDocumentoReeRepRes(doc)),
+             };
+         }
+-        valoresNormalizados.trib = {
+-            gIBSCBS: this.normalizarSituacaoTributariaIBSCBS(ibscbs.valores.trib.gIBSCBS),
+-        };
++        const situacaoNormalizada = this.normalizarSituacaoTributariaIBSCBS(ibscbs.valores.trib.gIBSCBS);
++        const { CST, cClassTrib, ...gIBSCBS } = situacaoNormalizada;
++        valoresNormalizados.trib = { CST, cClassTrib };
++        if (Object.keys(gIBSCBS).length) {
++            valoresNormalizados.trib.gIBSCBS = gIBSCBS;
++        }
+         ibscbsNormalizado.valores = valoresNormalizados;
+         return ibscbsNormalizado;
+     }
+@@ -372,6 +373,7 @@ class NFSeAutorizacaoService extends shared.BaseNFSe {
+             dCompet,
+             tpEmit: infDps.tpEmit,
+         };
++        infDpsNormalizado.finNFSe = infDps.finNFSe;
+         if (infDps.cMotivoEmisTI) {
+             infDpsNormalizado.cMotivoEmisTI = infDps.cMotivoEmisTI;
+         }
+@@ -1834,4 +1836,5 @@ exports.NFSeParametrosMunicipais = NFSeParametrosMunicipais;
+ exports.NFSeParametrosMunicipaisService = NFSeParametrosMunicipaisService;
+ exports.NFSeWizard = NFSe;
+ exports.default = NFSe;
++exports.NFSE_NT009_PATCHED = true;
+ //# sourceMappingURL=index.cjs.map
+diff --git a/node_modules/@nfewizard/nfse/dist/index.mjs b/node_modules/@nfewizard/nfse/dist/index.mjs
+index cfdeed9..5ac24de 100644
+--- a/node_modules/@nfewizard/nfse/dist/index.mjs
++++ b/node_modules/@nfewizard/nfse/dist/index.mjs
+@@ -232,13 +232,13 @@ class NFSeAutorizacaoService extends BaseNFSe {
+         if (servico.cServ.cTribMun) {
+             servicoNormalizado.cServ.cTribMun = servico.cServ.cTribMun;
+         }
+-        servicoNormalizado.cServ.xDescServ = servico.cServ.xDescServ;
+         if (servico.cServ.cNBS) {
+             servicoNormalizado.cServ.cNBS = servico.cServ.cNBS;
+         }
+         if (servico.cServ.cIntContrib) {
+             servicoNormalizado.cServ.cIntContrib = servico.cServ.cIntContrib;
+         }
++        servicoNormalizado.cServ.xDescServ = servico.cServ.xDescServ;
+         if (servico.comExt) {
+             servicoNormalizado.comExt = servico.comExt;
+         }
+@@ -313,9 +313,7 @@ class NFSeAutorizacaoService extends BaseNFSe {
+         if (!ibscbs) {
+             return ibscbs;
+         }
+-        const ibscbsNormalizado = {
+-            finNFSe: ibscbs.finNFSe,
+-        };
++        const ibscbsNormalizado = {};
+         if (ibscbs.indFinal !== undefined) {
+             ibscbsNormalizado.indFinal = ibscbs.indFinal;
+         }
+@@ -347,9 +345,12 @@ class NFSeAutorizacaoService extends BaseNFSe {
+                 documentos: ibscbs.valores.gReeRepRes.documentos.map((doc) => this.normalizarDocumentoReeRepRes(doc)),
+             };
+         }
+-        valoresNormalizados.trib = {
+-            gIBSCBS: this.normalizarSituacaoTributariaIBSCBS(ibscbs.valores.trib.gIBSCBS),
+-        };
++        const situacaoNormalizada = this.normalizarSituacaoTributariaIBSCBS(ibscbs.valores.trib.gIBSCBS);
++        const { CST, cClassTrib, ...gIBSCBS } = situacaoNormalizada;
++        valoresNormalizados.trib = { CST, cClassTrib };
++        if (Object.keys(gIBSCBS).length) {
++            valoresNormalizados.trib.gIBSCBS = gIBSCBS;
++        }
+         ibscbsNormalizado.valores = valoresNormalizados;
+         return ibscbsNormalizado;
+     }
+@@ -368,6 +369,7 @@ class NFSeAutorizacaoService extends BaseNFSe {
+             dCompet,
+             tpEmit: infDps.tpEmit,
+         };
++        infDpsNormalizado.finNFSe = infDps.finNFSe;
+         if (infDps.cMotivoEmisTI) {
+             infDpsNormalizado.cMotivoEmisTI = infDps.cMotivoEmisTI;
+         }
+@@ -1817,6 +1819,6 @@ class NFSe {
+         }
+     }
+ }
+-
+-export { NFSeAutorizacao, NFSeAutorizacaoService, NFSeConsulta, NFSeConsultaService, NFSeDistribuicao, NFSeDistribuicaoService, NFSeEventos, NFSeEventosService, NFSeParametrosMunicipais, NFSeParametrosMunicipaisService, NFSe as NFSeWizard, NFSe as default };
++const NFSE_NT009_PATCHED = true;
++export { NFSE_NT009_PATCHED, NFSeAutorizacao, NFSeAutorizacaoService, NFSeConsulta, NFSeConsultaService, NFSeDistribuicao, NFSeDistribuicaoService, NFSeEventos, NFSeEventosService, NFSeParametrosMunicipais, NFSeParametrosMunicipaisService, NFSe as NFSeWizard, NFSe as default };
+ //# sourceMappingURL=index.mjs.map

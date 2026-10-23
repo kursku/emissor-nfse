@@ -44,7 +44,7 @@ test('Id segue o padrao DPS + 42 digitos exigido pelo XSD', () => {
   const id = /<infDPS Id="([^"]+)"/.exec(xml)?.[1];
   assert.ok(id, 'atributo Id ausente');
   assert.match(id, /^DPS\d{42}$/);
-  assert.ok(id.startsWith('DPS11222333000181'), 'Id deve comecar pelo CNPJ do prestador');
+  assert.ok(id.startsWith('DPS3509502211222333000181'), 'Id deve seguir o layout nacional');
 });
 
 test('nDPS diferente produz Id diferente', () => {
@@ -64,18 +64,39 @@ test('os campos que a SEFIN recusa quando faltam estao no XML', () => {
   assert.match(xml, /<vServ>1234\.56<\/vServ>/);
 });
 
+test('finNFSe fica em infDPS antes de cLocEmi', async () => {
+  const xml = gerarXmlDps(INPUT, CFG, AGORA);
+  assert.match(xml, /<tpEmit>1<\/tpEmit><finNFSe>0<\/finNFSe><cLocEmi>3509502<\/cLocEmi>/);
+  assert.doesNotMatch(xml, /<IBSCBS><finNFSe>0<\/finNFSe>/);
+
+  const semFinNFSe = xml.replace('<finNFSe>0</finNFSe>', '');
+  const semFinResult = await validarXsd(semFinNFSe);
+  assert.equal(semFinResult.ok, false, 'o XSD novo deve exigir finNFSe em infDPS');
+});
+
 test('XML montado passa na validacao XSD', async () => {
   const { ok, msg } = await validarXsd(gerarXmlDps(INPUT, CFG, AGORA));
   assert.equal(ok, true, msg);
 });
 
-test('o XSD NAO exige documento do tomador — a validacao de borda e que exige', async () => {
-  // Descoberto ao escrever este teste: o XSD aceita `toma` so com xNome, sem
-  // CPF nem CNPJ (o layout preve tomador nao identificado). Ou seja, passar no
-  // XSD nao garante nota aceitavel — docTomadorInvalido e a unica barreira
-  // antes de a nota chegar na SEFIN com o tomador errado.
+test('Série inválida não é aceita pelo contorno do falso positivo do schema', async () => {
+  const xml = gerarXmlDps(INPUT, CFG, AGORA).replace('<serie>00001</serie>', '<serie>abc</serie>');
+  const { ok, msg } = await validarXsd(xml);
+  assert.equal(ok, false);
+  assert.match(msg, /Série inválida|serie/i);
+});
+
+test('erro de schema junto do falso positivo de Série continua inválido', async () => {
+  const xml = gerarXmlDps({ ...INPUT, cNBS: '123' }, CFG, AGORA);
+  const { ok, msg } = await validarXsd(xml);
+  assert.equal(ok, false);
+  assert.match(msg, /cNBS/);
+});
+
+test('documento ausente continua inválido e a validação de borda também o exige', async () => {
   const semDoc = { ...INPUT, tomador: { xNome: 'SEM DOCUMENTO' } } as EmissaoInput;
-  const { ok } = await validarXsd(gerarXmlDps(semDoc, CFG, AGORA));
-  assert.equal(ok, true, 'o XSD aceita tomador sem documento');
+  const { ok, msg } = await validarXsd(gerarXmlDps(semDoc, CFG, AGORA));
+  assert.equal(ok, false);
+  assert.match(msg, /CNPJ|CPF|documento|toma/i);
   assert.match(docTomadorInvalido({}), /precisa de CPF ou CNPJ/);
 });

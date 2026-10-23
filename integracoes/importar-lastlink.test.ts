@@ -1,6 +1,6 @@
 /**
  * Testes dos helpers puros de importar-lastlink.ts: parse de campos brutos da
- * planilha (str/parseNum/excelSerialToIso), classificação de fila e
+ * planilha (str/excelSerialToIso), classificação de fila e
  * normalização de venda. Não exercita main() — importar este módulo não abre
  * xlsx nem toca o banco (guarda isMain).
  */
@@ -9,7 +9,6 @@ import assert from "node:assert/strict";
 
 import {
   str,
-  parseNum,
   excelSerialToIso,
   classificarFila,
   normalizarVenda,
@@ -31,19 +30,13 @@ function rowBase(overrides: Partial<RawRow> = {}): RawRow {
   };
 }
 
-// ─── str / parseNum / excelSerialToIso ────────────────────────────────────────
+// ─── str / excelSerialToIso ───────────────────────────────────────────────────
 
 test("str remove espacos e trata null/undefined como vazio", () => {
   assert.equal(str("  Cliente Exemplo  "), "Cliente Exemplo");
   assert.equal(str(null), "");
   assert.equal(str(undefined), "");
   assert.equal(str(123), "123");
-});
-
-test("parseNum devolve 0 para valor nao numerico", () => {
-  assert.equal(parseNum("1234.56"), 1234.56);
-  assert.equal(parseNum("abc"), 0);
-  assert.equal(parseNum(undefined), 0);
 });
 
 test("excelSerialToIso converte serial Excel para ISO AAAA-MM-DD", () => {
@@ -146,6 +139,42 @@ test("normalizarVenda usa a comissao do coprodutor como valor da nota, nao o val
   );
   assert.equal(venda.valor, 150);
   assert.equal(venda.valor_bruto, 500);
+});
+
+test("normalizarVenda interpreta moeda pt-BR sem perder os centavos", () => {
+  const venda = normalizarVenda(
+    rowBase({ "Comissão total de coprodutores": "49,90", "Valor da venda": "1.234,56" }),
+    HOJE,
+    null,
+    null,
+    PRODUTOS,
+  );
+  assert.equal(venda.valor, 49.9);
+  assert.equal(venda.valor_bruto, 1234.56);
+});
+
+test("normalizarVenda manda comissão parcial para excecao", () => {
+  const venda = normalizarVenda(
+    rowBase({ "Comissão total de coprodutores": "100abc", "Valor da venda": "200,00" }),
+    HOJE,
+    null,
+    null,
+    PRODUTOS,
+  );
+  assert.equal(venda.fila, "excecao");
+  assert.equal(venda.valor, undefined);
+});
+
+test("normalizarVenda recusa comissão maior que o valor bruto", () => {
+  const venda = normalizarVenda(
+    rowBase({ "Comissão total de coprodutores": "100,01", "Valor da venda": "100,00" }),
+    HOJE,
+    null,
+    null,
+    PRODUTOS,
+  );
+  assert.equal(venda.fila, "excecao");
+  assert.equal(venda.valor, undefined);
 });
 
 test("normalizarVenda usa o status inicial igual a fila calculada", () => {

@@ -1,6 +1,6 @@
 /**
  * Envio de e-mail pós-emissão com DANFSe anexo.
- * DANFSe: GET https://adn.nfse.gov.br/danfse/{chave} com mTLS (mesmo .p12 da emissão).
+ * DANFSe: GET no ADN do ambiente configurado, com mTLS (mesmo .p12 da emissão).
  * E-mail: Resend API via fetch (RESEND_API_KEY no ambiente).
  */
 
@@ -9,12 +9,11 @@ import { join } from 'node:path';
 import type { Venda } from './store.js';
 import { config } from './config.js';
 import { getComCertificado } from './http-mtls.js';
-import { erroEnvioEmail } from './email-validacao.js';
-
-const DANFSE_URL = 'https://adn.nfse.gov.br/danfse';
+import { erroEnvioEmail, montarHtmlNota } from './email-validacao.js';
+import { adnDanfseUrl } from './ambiente.mjs';
 
 export async function baixarDanfse(chave: string): Promise<Buffer> {
-  const res = await getComCertificado(`${DANFSE_URL}/${chave}`);
+  const res = await getComCertificado(adnDanfseUrl(config.ambiente, chave));
   if (res.status !== 200) {
     throw new Error(`DANFSe HTTP ${res.status}: ${res.texto().slice(0, 300)}`);
   }
@@ -45,11 +44,7 @@ export async function enviarEmailNota(venda: Venda, chave: string): Promise<void
       from,
       to: venda.email,
       subject: `Nota fiscal emitida — ${venda.produto ?? 'serviço'}`,
-      html:
-        `<p>Olá, ${venda.nome ?? ''}!</p>` +
-        `<p>Sua nota fiscal de serviço foi emitida.</p>` +
-        `<p>Chave de acesso: <code>${chave}</code></p>` +
-        (pdf ? '<p>O DANFSe está em anexo.</p>' : ''),
+      html: montarHtmlNota(venda.nome, chave, Boolean(pdf)),
       ...(pdf
         ? {
             attachments: [
