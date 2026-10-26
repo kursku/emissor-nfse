@@ -215,24 +215,26 @@ test('chave pública inválida é rejeitada antes de qualquer consulta ou caminh
 
 test('descoberta controlada ignora diretório e não executável e respeita ordem do PATH', async () => {
   if (process.platform === 'win32') return;
-  const primeiro = await mkdtemp(join(tmpdir(), 'nfse-browser-path-1-'));
-  const segundo = await mkdtemp(join(tmpdir(), 'nfse-browser-path-2-'));
+  const comDiretorio = await mkdtemp(join(tmpdir(), 'nfse-browser-path-1-'));
+  const comSemExecucao = await mkdtemp(join(tmpdir(), 'nfse-browser-path-2-'));
+  const comExecutavel = await mkdtemp(join(tmpdir(), 'nfse-browser-path-3-'));
   const anterior = process.env.PATH;
   try {
-    await mkdir(join(primeiro, 'browser-teste'));
-    const semExecucao = join(primeiro, 'browser-teste');
+    await mkdir(join(comDiretorio, 'browser-teste'));
+    const semExecucao = join(comSemExecucao, 'browser-teste');
     await writeFile(semExecucao, '#!/bin/sh\nexit 0');
     await chmod(semExecucao, 0o644);
-    const executavel = join(segundo, 'browser-teste');
+    const executavel = join(comExecutavel, 'browser-teste');
     await writeFile(executavel, '#!/bin/sh\nexit 0');
     await chmod(executavel, 0o755);
-    process.env.PATH = `${primeiro}${delimiter}${segundo}`;
+    process.env.PATH = [comDiretorio, comSemExecucao, comExecutavel].join(delimiter);
     assert.equal(encontrarBrowser('browser-teste'), executavel);
   } finally {
     if (anterior === undefined) delete process.env.PATH;
     else process.env.PATH = anterior;
-    await rm(primeiro, { recursive: true, force: true });
-    await rm(segundo, { recursive: true, force: true });
+    for (const pasta of [comDiretorio, comSemExecucao, comExecutavel]) {
+      await rm(pasta, { recursive: true, force: true });
+    }
   }
 });
 
