@@ -29,6 +29,7 @@
   },
   "dependencies": {
     "@nfewizard/nfse": "1.0.7",
+    "@notaas/danfse-viewer": "1.0.10",
     "express": "^5.2.1",
     "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz"
   },

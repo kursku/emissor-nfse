@@ -30,12 +30,31 @@ export interface RespostaMtls {
  */
 export function getComCertificado(
   url: string,
-  opcoes: { timeoutMs?: number; agentePadrao?: boolean } = {},
+  opcoes: { timeoutMs?: number; totalTimeoutMs?: number; agentePadrao?: boolean } = {},
 ): Promise<RespostaMtls> {
   exigirCertificado();
-  const { timeoutMs = 30000, agentePadrao = true } = opcoes;
+  const { timeoutMs = 30000, totalTimeoutMs, agentePadrao = true } = opcoes;
   return new Promise((resolve, reject) => {
-    const req = https.get(
+    let totalTimer: NodeJS.Timeout | undefined;
+    let settled = false;
+    let req: ReturnType<typeof https.get> | undefined;
+    const limparTimer = () => {
+      if (totalTimer) clearTimeout(totalTimer);
+    };
+    const resolver = (resposta: RespostaMtls) => {
+      if (settled) return;
+      settled = true;
+      limparTimer();
+      resolve(resposta);
+    };
+    const rejeitar = (err: Error) => {
+      if (settled) return;
+      settled = true;
+      limparTimer();
+      reject(err);
+      req?.destroy(err);
+    };
+    req = https.get(
       url,
       {
         ...(agentePadrao ? { agent: false } : {}),
@@ -45,9 +64,14 @@ export function getComCertificado(
       (res) => {
         const chunks: Buffer[] = [];
         res.on('data', (c: Buffer) => chunks.push(c));
+        res.on('error', (err) => rejeitar(err));
+        res.on('aborted', () => rejeitar(new Error('resposta interrompida')));
+        res.on('close', () => {
+          if (!res.complete) rejeitar(new Error('resposta interrompida'));
+        });
         res.on('end', () => {
           const buf = Buffer.concat(chunks);
-          resolve({
+          resolver({
             status: res.statusCode ?? 0,
             contentType: (res.headers['content-type'] as string) ?? '',
             buf,
@@ -57,8 +81,15 @@ export function getComCertificado(
       },
     );
     req.setTimeout(timeoutMs, () => {
-      req.destroy(new Error(`timeout de ${timeoutMs}ms em ${url}`));
+      rejeitar(new Error(`timeout de ${timeoutMs}ms em ${url}`));
     });
-    req.on('error', reject);
+    if (totalTimeoutMs !== undefined) {
+      totalTimer = setTimeout(() => {
+        rejeitar(new Error(`timeout total de ${totalTimeoutMs}ms`));
+      }, totalTimeoutMs);
+    }
+    req.on('error', (err) => {
+      rejeitar(err);
+    });
   });
 }

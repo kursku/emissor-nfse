@@ -98,6 +98,7 @@ export const config = {
    */
   ambiente: codigo('NFSE_AMBIENTE', 2 as 1 | 2, [1, 2]),
   outputDir: opcional('NFSE_OUTPUT_DIR', join(ROOT, 'output', 'nfewizard')),
+  danfseBrowser: opcional('NFSE_DANFSE_BROWSER', ''),
   /**
    * Regime tributário. opSimpNac: 1 não optante, 2 MEI, 3 ME/EPP.
    * regApTribSN só se aplica a ME/EPP (obrigatório nesse caso — erro E0166).

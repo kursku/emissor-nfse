@@ -61,6 +61,11 @@ const COMANDOS = {
     uso: 'nfse arquivar <id_venda>',
     desc: 'salva XML e DANFSe da nota em output/notas/<AAAA-MM>/<id_venda>/',
   },
+  danfse: {
+    script: 'src/danfse-cli.ts',
+    uso: 'nfse danfse <nota.xml> [saida.pdf]',
+    desc: 'gera DANFSe local de XML autorizado, sem enviar nada',
+  },
 };
 
 function ajuda() {

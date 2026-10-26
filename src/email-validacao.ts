@@ -1,7 +1,6 @@
 /**
  * Validação dos pré-requisitos de enviarEmailNota, extraída para um módulo
- * sem import de config.ts — email.ts importa config.ts (via http-mtls.ts),
- * que exige NFSE_* no ambiente e derruba o processo se ausente (ex.: CI).
+ * sem import de config.ts, para validar o contrato sem carregar credenciais.
  */
 export interface DadosEnvioEmail {
   email?: string;

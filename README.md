@@ -88,6 +88,7 @@ Antes de 01/12/2026 a emissão real em produção fica bloqueada (veja Status).
 | `importar` | `nfse importar <planilha.xlsx>` | importa o relatório `sales_list` da Lastlink para o banco |
 | `contratos` | `nfse contratos <criar\|listar\|atualizar\|desativar\|gerar>` | contratos recorrentes: cadastra uma vez, gera as vendas do mês |
 | `arquivar` | `nfse arquivar <id_venda>` | salva XML e DANFSe da nota em `output/notas/<AAAA-MM>/<id_venda>/` |
+| `danfse` | `nfse danfse <nota.xml> [saida.pdf]` | gera DANFSe local sem enviar nada; sem browser salva HTML |
 
 Rode `nfse --help` para ver esta mesma lista a qualquer momento.
 
@@ -382,11 +383,32 @@ apague a pasta depois.
 
 ### Arquivar uma nota já emitida
 
-Guarda o XML e o PDF da nota numa pasta de arquivamento:
+Guarda o XML e o PDF ou HTML da nota numa pasta de arquivamento:
 
 ```
 nfse arquivar <id_venda>
 ```
+
+O DANFSe tenta primeiro o PDF do ADN. Se o ADN falhar, o XML autorizado em
+`<NFSE_OUTPUT_DIR>/autorizacao/<chave>.xml` é renderizado localmente pelo
+`@notaas/danfse-viewer` e por Edge, Chrome ou Chromium headless. Configure um
+executável específico com `NFSE_DANFSE_BROWSER`. Sem browser, `arquivar`
+salva `danfse.html` e o e-mail segue sem anexo.
+
+O PDF local é renderizado a partir do XML autorizado original e não incorpora
+eventuais eventos posteriores da nota. Em root ou Docker, execute o Chrome
+com um usuário não-root; o comando não usa `--no-sandbox`.
+
+Para renderizar um XML autorizado sem enviar nada:
+
+```
+nfse danfse <nota.xml> [saida.pdf]
+```
+
+Sem browser, se a saída terminar em `.pdf`, o comando troca essa extensão por
+`.html`; para qualquer outra saída, acrescenta `.html`. O viewer corta a
+descrição do serviço em 1300 caracteres e não trata NIF do prestador como
+documento brasileiro; essas limitações são próprias da representação local.
 
 ### Importar vendas da Lastlink
 
@@ -507,6 +529,11 @@ envie manualmente.
   cadeia de certificados (CAs) reconhecida pelo sistema. O projeto já inclui
   um `certs/ca_bundle.crt` para resolver isso — confira se o arquivo está
   presente nessa pasta do projeto.
+
+- **`DANFSe indisponivel`:** o ADN não retornou um PDF válido e a geração local
+  também falhou. Instale Edge, Chrome ou Chromium, ou configure
+  `NFSE_DANFSE_BROWSER` com o caminho do executável. Sem browser, o arquivamento
+  ainda preserva o HTML local.
 
 - **`Bundle @nfewizard/nfse sem o patch NT 009`:** os patches de
   `patches/` não foram aplicados (por exemplo, depois de um `npm ci` sem o

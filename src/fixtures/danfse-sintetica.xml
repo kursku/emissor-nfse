@@ -1,0 +1,113 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<NFSe xmlns="http://www.sped.fazenda.gov.br/nfse" versao="1.01">
+  <infNFSe Id="NFS99999999999999999999999999999999999999999999999999">
+    <xLocEmi>LOCAL TESTE</xLocEmi>
+    <xLocPrestacao>LOCAL TESTE</xLocPrestacao>
+    <nNFSe>42</nNFSe>
+    <cLocIncid>9999999</cLocIncid>
+    <xLocIncid>LOCAL TESTE</xLocIncid>
+    <xTribNac>Servico sintetico de teste</xTribNac>
+    <verAplic>TESTE-1.0</verAplic>
+    <ambGer>2</ambGer>
+    <tpEmis>1</tpEmis>
+    <cStat>100</cStat>
+    <dhProc>2026-10-26T12:00:00-03:00</dhProc>
+    <nDFSe>42</nDFSe>
+    <emit>
+      <CNPJ>99999999999999</CNPJ>
+      <xNome>Prestador Sintetico</xNome>
+      <enderNac>
+        <xLgr>Logradouro Teste</xLgr>
+        <nro>100</nro>
+        <xBairro>Bairro Teste</xBairro>
+        <cMun>9999999</cMun>
+        <UF>SP</UF>
+        <CEP>99999999</CEP>
+      </enderNac>
+    </emit>
+    <valores>
+      <vBC>123.45</vBC>
+      <vLiq>123.45</vLiq>
+    </valores>
+    <IBSCBS>
+      <cLocalidadeIncid>9999999</cLocalidadeIncid>
+      <xLocalidadeIncid>LOCAL TESTE</xLocalidadeIncid>
+      <valores>
+        <vBC>123.45</vBC>
+        <uf><pIBSUF>0.10</pIBSUF><pAliqEfetUF>0.10</pAliqEfetUF></uf>
+        <mun><pIBSMun>0.10</pIBSMun><pAliqEfetMun>0.10</pAliqEfetMun></mun>
+        <fed><pCBS>0.90</pCBS><pAliqEfetCBS>0.90</pAliqEfetCBS></fed>
+      </valores>
+      <totCIBS>
+        <vTotNF>123.45</vTotNF>
+        <gIBS>
+          <vIBSTot>2.00</vIBSTot>
+          <gIBSUFTot><vIBSUF>1.00</vIBSUF></gIBSUFTot>
+          <gIBSMunTot><vIBSMun>1.00</vIBSMun></gIBSMunTot>
+        </gIBS>
+        <gCBS><vCBS>1.11</vCBS></gCBS>
+      </totCIBS>
+    </IBSCBS>
+    <DPS versao="1.01">
+      <infDPS Id="DPS999999919999999999999900000000000000000042">
+        <tpAmb>2</tpAmb>
+        <dhEmi>2026-10-26T11:59:00-03:00</dhEmi>
+        <verAplic>TESTE-1.0</verAplic>
+        <serie>1</serie>
+        <nDPS>42</nDPS>
+        <dCompet>2026-10-26</dCompet>
+        <tpEmit>1</tpEmit>
+        <finNFSe>0</finNFSe>
+        <cLocEmi>9999999</cLocEmi>
+        <prest>
+          <CNPJ>99999999999999</CNPJ>
+          <IM>9999999</IM>
+          <xNome>Prestador Sintetico</xNome>
+          <end>
+            <endNac>
+              <cMun>9999999</cMun>
+              <CEP>99999999</CEP>
+            </endNac>
+            <xLgr>Logradouro Teste</xLgr>
+            <nro>100</nro>
+            <xBairro>Bairro Teste</xBairro>
+          </end>
+          <fone>0000000000</fone>
+          <email>teste@example.invalid</email>
+          <regTrib><opSimpNac>1</opSimpNac><regEspTrib>0</regEspTrib></regTrib>
+        </prest>
+        <toma>
+          <CNPJ>99999999999999</CNPJ>
+          <xNome>Tomador Sintetico</xNome>
+        </toma>
+        <serv>
+          <locPrest><cLocPrestacao>9999999</cLocPrestacao></locPrest>
+          <cServ>
+            <cTribNac>010101</cTribNac>
+            <cNBS>101011000</cNBS>
+            <xDescServ>Servico sintetico de teste</xDescServ>
+          </cServ>
+        </serv>
+        <valores>
+          <vServPrest><vServ>123.45</vServ></vServPrest>
+          <vDescCondIncond><vDescIncond>0.00</vDescIncond><vDescCond>0.00</vDescCond></vDescCondIncond>
+          <trib>
+            <tribMun><tribISSQN>1</tribISSQN><tpRetISSQN>1</tpRetISSQN></tribMun>
+            <totTrib><pTotTrib><pTotTribFed>0.00</pTotTribFed><pTotTribEst>0.00</pTotTribEst><pTotTribMun>0.00</pTotTribMun></pTotTrib></totTrib>
+          </trib>
+        </valores>
+      </infDPS>
+    </DPS>
+  </infNFSe>
+  <ds:Signature xmlns:ds="http://www.w3.org/2000/09/xmldsig#">
+    <ds:SignedInfo>
+      <ds:CanonicalizationMethod Algorithm="http://www.w3.org/TR/2001/REC-xml-c14n-20010315" />
+      <ds:SignatureMethod Algorithm="http://www.w3.org/2001/04/xmlenc#rsa-sha256" />
+      <ds:Reference URI="#NFS99999999999999999999999999999999999999999999999999">
+        <ds:DigestMethod Algorithm="http://www.w3.org/2001/04/xmlenc#sha256" />
+        <ds:DigestValue>AA==</ds:DigestValue>
+      </ds:Reference>
+    </ds:SignedInfo>
+    <ds:SignatureValue>AA==</ds:SignatureValue>
+  </ds:Signature>
+</NFSe>
