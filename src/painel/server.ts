@@ -150,6 +150,12 @@ export function resolverImportPath(pathName: unknown, importDir = IMPORT_DIR): s
   }
 }
 
+/**
+ * Separa o hostname da porta em um valor de Host, preservando IPv6 entre colchetes.
+ *
+ * @param valor Host no formato `dominio`, `dominio:porta`, `[::1]` ou `[::1]:porta`.
+ * @returns Objeto com `hostname` e `porta` (indefinida quando não informada).
+ */
 function separarHostPorta(valor: string): { hostname: string; porta?: string } {
   if (valor.startsWith('[')) {
     const fim = valor.indexOf(']');
@@ -166,6 +172,11 @@ function separarHostPorta(valor: string): { hostname: string; porta?: string } {
   return { hostname: valor.slice(0, separador), porta: valor.slice(separador + 1) };
 }
 
+/**
+ * Lê e normaliza a lista de hosts extras definida em `ALLOWED_HOSTS`.
+ *
+ * @returns Lista de hosts permitidos, em minúsculas e sem entradas vazias.
+ */
 function hostsPermitidos(): string[] {
   return (process.env.ALLOWED_HOSTS ?? '')
     .split(',')
@@ -173,6 +184,18 @@ function hostsPermitidos(): string[] {
     .filter(Boolean);
 }
 
+/**
+ * Verifica se o cabeçalho Host da requisição é aceito pelo painel.
+ *
+ * `localhost` e `127.0.0.1` só são aceitos na porta configurada do painel.
+ * Hosts adicionais em `ALLOWED_HOSTS` podem ser informados com porta
+ * (comparação exata) ou sem porta (aceita qualquer porta do mesmo domínio).
+ *
+ * @param host Valor bruto do cabeçalho Host.
+ * @param panelPort Porta fixa configurada para o painel.
+ * @param localPort Porta real do socket, usada quando `panelPort` é 0.
+ * @returns `true` se o Host for permitido; caso contrário, `false`.
+ */
 function hostPermitido(host: string | undefined, panelPort: number, localPort?: number): boolean {
   if (!host) return false;
   const porta = panelPort === 0 ? localPort : panelPort;
@@ -194,6 +217,17 @@ function hostPermitido(host: string | undefined, panelPort: number, localPort?: 
   });
 }
 
+/**
+ * Verifica se a origem da requisição pode acessar o painel.
+ *
+ * Aceita apenas origens HTTP/HTTPS cujo host também seja permitido por
+ * {@link hostPermitido}; as portas padrão 80 e 443 são inferidas quando omitidas.
+ *
+ * @param origin Valor do cabeçalho Origin.
+ * @param panelPort Porta fixa configurada para o painel.
+ * @param localPort Porta real do socket, usada quando `panelPort` é 0.
+ * @returns `true` se a origem for permitida; caso contrário, `false`.
+ */
 function originPermitida(origin: string, panelPort: number, localPort?: number): boolean {
   try {
     const url = new URL(origin);
@@ -745,6 +779,15 @@ if (isMain) {
     console.log('Painel NFS-e (PRODUCAO REAL): http://' + HOST + ':' + PORT);
   });
 
+  /**
+   * Encerra o servidor HTTP de forma graciosa ao receber SIGTERM ou SIGINT.
+   *
+   * Fecha o listener, libera conexões ociosas e finaliza o processo com
+   * código 0, permitindo que o SQLite conclua as operações síncronas pendentes.
+   *
+   * @param sinal Sinal recebido do sistema operacional.
+   * @returns Nada; o processo é finalizado após o fechamento do listener.
+   */
   const encerrar = (sinal: NodeJS.Signals): void => {
     console.log(`[server] ${sinal} recebido; encerrando painel...`);
     server.close(() => {
