@@ -71,6 +71,28 @@ async function fechar(server: Server): Promise<void> {
   await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
 }
 
+test("HOST customizado controla o bind sem alterar o padrão loopback", () => {
+  const lerHost = (env: NodeJS.ProcessEnv) => spawnSync(
+    process.execPath,
+    [
+      "--import", "tsx",
+      "--input-type=module",
+      "--eval", "const { HOST } = await import('./src/painel/server.ts'); console.log(HOST)",
+    ],
+    { cwd: process.cwd(), encoding: "utf8", env },
+  );
+
+  const customizado = lerHost({ ...process.env, HOST: "0.0.0.0" });
+  assert.equal(customizado.status, 0, customizado.stderr);
+  assert.equal(customizado.stdout.trim(), "0.0.0.0");
+
+  const semHost = { ...process.env };
+  delete semHost.HOST;
+  const padrao = lerHost(semHost);
+  assert.equal(padrao.status, 0, padrao.stderr);
+  assert.equal(padrao.stdout.trim(), "127.0.0.1");
+});
+
 test("ouvir falha imediatamente quando a porta está ocupada", async () => {
   const ocupado = createServer();
   await new Promise<void>((resolve, reject) => {
