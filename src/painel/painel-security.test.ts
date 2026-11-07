@@ -249,6 +249,79 @@ test('panelPort 0 exige a porta real da requisição', async () => {
   assert.equal(real.status, 200);
 });
 
+test('aceita Host de ALLOWED_HOSTS com e sem porta', async () => {
+  const anterior = process.env['ALLOWED_HOSTS'];
+  process.env['ALLOWED_HOSTS'] = 'emissor.local, painel.example:3000';
+
+  try {
+    const semPorta = await request('/api/config', { host: `emissor.local:${panelPort}` });
+    assert.equal(semPorta.status, 200);
+
+    const semPortaSemSufixo = await request('/api/config', { host: 'emissor.local' });
+    assert.equal(semPortaSemSufixo.status, 200);
+
+    const comPorta = await request('/api/config', { host: 'painel.example:3000' });
+    assert.equal(comPorta.status, 200);
+
+    const portaDiferente = await request('/api/config', { host: 'painel.example:3001' });
+    assert.equal(portaDiferente.status, 403);
+
+    const dominioParecido = await request('/api/config', { host: `emissor.local.evil:${panelPort}` });
+    assert.equal(dominioParecido.status, 403);
+  } finally {
+    if (anterior === undefined) delete process.env['ALLOWED_HOSTS'];
+    else process.env['ALLOWED_HOSTS'] = anterior;
+  }
+});
+
+test('aceita Origin https nos endereços locais e em ALLOWED_HOSTS', async () => {
+  const anterior = process.env['ALLOWED_HOSTS'];
+
+  try {
+    delete process.env['ALLOWED_HOSTS'];
+    const local = await request('/api/config', {
+      host: `localhost:${panelPort}`,
+      origin: `https://localhost:${panelPort}`,
+    });
+    assert.equal(local.status, 200);
+
+    process.env['ALLOWED_HOSTS'] = 'emissor.local';
+    const proxy = await request('/api/config', {
+      host: 'emissor.local',
+      origin: 'https://emissor.local',
+    });
+    assert.equal(proxy.status, 200);
+
+    const proxyComPorta = await request('/api/config', {
+      host: 'emissor.local:443',
+      origin: 'https://emissor.local:443',
+    });
+    assert.equal(proxyComPorta.status, 200);
+
+    const estranho = await request('/api/config', {
+      host: 'emissor.local',
+      origin: 'https://evil.example',
+    });
+    assert.equal(estranho.status, 403);
+  } finally {
+    if (anterior === undefined) delete process.env['ALLOWED_HOSTS'];
+    else process.env['ALLOWED_HOSTS'] = anterior;
+  }
+});
+
+test('TRUST_PROXY=true ativa trust proxy no Express', () => {
+  const anterior = process.env['TRUST_PROXY'];
+  process.env['TRUST_PROXY'] = 'true';
+
+  try {
+    const app = createPainelApp({ panelPort: 0 });
+    assert.equal(app.get('trust proxy'), 1);
+  } finally {
+    if (anterior === undefined) delete process.env['TRUST_PROXY'];
+    else process.env['TRUST_PROXY'] = anterior;
+  }
+});
+
 test('bloqueia clickjacking com headers em toda resposta', async () => {
   const response = await request('/');
   assert.equal(response.headers['x-frame-options'], 'DENY');

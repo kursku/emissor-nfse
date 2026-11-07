@@ -1,6 +1,8 @@
 /**
- * Painel local de emissao NFS-e. Uso: npx tsx src/painel/server.ts.
- * NAO expor fora de localhost: usa certificado digital real e emite documento fiscal.
+ * Painel de emissao NFS-e. Uso: npx tsx src/painel/server.ts.
+ * Escuta apenas em localhost por padrão; HOST e ALLOWED_HOSTS permitem uso
+ * controlado atrás de proxy reverso. Usa certificado digital real e emite
+ * documento fiscal, portanto não exponha o painel sem essas proteções.
  */
 
 import express from 'express';
@@ -41,6 +43,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(__dirname, '..', '..');
 const DB_PATH = join(ROOT, 'output', 'emissor.db');
 const PORT = 3000;
+export const HOST = process.env.HOST || '127.0.0.1';
 
 export const PAINEL_TOKEN_HEADER = 'X-Painel-Token';
 export const IMPORT_DIR = join(ROOT, 'importacoes');
@@ -147,18 +150,56 @@ export function resolverImportPath(pathName: unknown, importDir = IMPORT_DIR): s
   }
 }
 
+function separarHostPorta(valor: string): { hostname: string; porta?: string } {
+  if (valor.startsWith('[')) {
+    const fim = valor.indexOf(']');
+    if (fim >= 0) {
+      const sufixo = valor.slice(fim + 1);
+      return {
+        hostname: valor.slice(0, fim + 1),
+        porta: sufixo.startsWith(':') ? sufixo.slice(1) : undefined,
+      };
+    }
+  }
+  const separador = valor.lastIndexOf(':');
+  if (separador < 0) return { hostname: valor };
+  return { hostname: valor.slice(0, separador), porta: valor.slice(separador + 1) };
+}
+
+function hostsPermitidos(): string[] {
+  return (process.env.ALLOWED_HOSTS ?? '')
+    .split(',')
+    .map((host) => host.trim().toLowerCase())
+    .filter(Boolean);
+}
+
 function hostPermitido(host: string | undefined, panelPort: number, localPort?: number): boolean {
   if (!host) return false;
   const porta = panelPort === 0 ? localPort : panelPort;
   if (!porta) return false;
   const normalizado = host.trim().toLowerCase();
-  return normalizado === `localhost:${porta}` || normalizado === `127.0.0.1:${porta}`;
+  if (normalizado === `localhost:${porta}` || normalizado === `127.0.0.1:${porta}`) return true;
+
+  const permitidos = hostsPermitidos();
+  if (permitidos.length === 0) return false;
+
+  const alvo = separarHostPorta(normalizado);
+  return permitidos.some((permitido) => {
+    const regra = separarHostPorta(permitido);
+    // Com porta explícita a comparação é exata; sem porta vale qualquer porta
+    // do mesmo domínio (ex.: emissor.local aceita emissor.local:3000).
+    return regra.porta !== undefined
+      ? normalizado === permitido
+      : alvo.hostname === regra.hostname;
+  });
 }
 
 function originPermitida(origin: string, panelPort: number, localPort?: number): boolean {
   try {
     const url = new URL(origin);
-    return url.protocol === 'http:' && hostPermitido(`${url.hostname}:${url.port}`, panelPort, localPort);
+    if (url.protocol !== 'http:' && url.protocol !== 'https:') return false;
+    const porta = url.port || (url.protocol === 'https:' ? '443' : '80');
+    return hostPermitido(`${url.hostname}:${porta}`, panelPort, localPort);
   } catch {
     return false;
   }
@@ -206,6 +247,9 @@ export function createPainelApp(deps: PainelDependencies = {}) {
   const tokens = new Map<string, number>();
   const runSpawn = deps.spawnTsx ?? spawnTsx;
   const app = express();
+  if (process.env.TRUST_PROXY === 'true') {
+    app.set('trust proxy', 1);
+  }
   if (deps.dbPath !== undefined) {
     initDb(dbPath);
   }
@@ -697,7 +741,19 @@ export const app = createPainelApp();
 const isMain = process.argv[1] === fileURLToPath(import.meta.url);
 if (isMain) {
   initDb(DB_PATH);
-  app.listen(PORT, '127.0.0.1', () => {
-    console.log('Painel NFS-e (PRODUCAO REAL): http://localhost:' + PORT);
+  const server = app.listen(PORT, HOST, () => {
+    console.log('Painel NFS-e (PRODUCAO REAL): http://' + HOST + ':' + PORT);
   });
+
+  const encerrar = (sinal: NodeJS.Signals): void => {
+    console.log(`[server] ${sinal} recebido; encerrando painel...`);
+    server.close(() => {
+      console.log('[server] Painel encerrado.');
+      process.exit(0);
+    });
+    server.closeIdleConnections();
+  };
+
+  process.once('SIGTERM', encerrar);
+  process.once('SIGINT', encerrar);
 }
