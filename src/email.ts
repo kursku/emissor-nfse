@@ -16,6 +16,7 @@ export interface EnviarEmailNotaDeps {
   outputDir?: string;
   ambiente?: 1 | 2;
   browser?: string;
+  exigirDanfse?: boolean;
 }
 
 export async function enviarEmailNota(
@@ -41,11 +42,17 @@ export async function enviarEmailNota(
       ambiente,
       browser,
     } satisfies ObterDanfseDeps);
-  } catch {
+  } catch (err) {
+    if (deps.exigirDanfse) {
+      throw new Error('DANFSe indisponível; e-mail não enviado.', { cause: err });
+    }
     console.warn('  DANFSe indisponivel (falha na leitura e geração local), enviando sem anexo');
   }
 
   const pdf = danfse && 'pdf' in danfse ? danfse.pdf : null;
+  if (deps.exigirDanfse && !pdf) {
+    throw new Error('DANFSe indisponível; e-mail não enviado.');
+  }
   if (pdf) {
     try {
       writeFileSync(join(outputDir, `danfse-${chave}.pdf`), pdf);

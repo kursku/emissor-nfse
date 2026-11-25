@@ -497,8 +497,12 @@ nfse reenviar <id_venda> --enviar
 ```
 
 Sem `--enviar`, o comando mostra o destinatário mascarado, a chave e os
-caminhos locais registrados, sem consultar o ADN nem enviar nada. Com
-`--enviar`, ele usa o e-mail salvo na Venda e a mesma lógica de DANFSe do lote.
+caminho local `autorizacao/<chave>.xml`, sem consultar o ADN nem enviar nada.
+O aviso informa que o ADN será tentado primeiro no envio e se o XML local existe.
+Com `--enviar`, ele usa o e-mail salvo na Venda, tenta obter o DANFSe pelo ADN e
+pelo XML local e não envia o e-mail se não conseguir gerar o PDF.
+A simulação abre o banco via `initDb`; em bancos antigos, isso pode aplicar
+migrações e criar um backup.
 O envio automático continua restrito ao processamento da fila.
 
 **Outros caminhos de emissão não enviam e-mail automaticamente:**
