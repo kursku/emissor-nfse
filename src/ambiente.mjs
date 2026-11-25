@@ -40,9 +40,11 @@ export function recusaModoReal(real, ambiente) {
 }
 
 export function mensagemModoReal(ambiente, pastaEnsaio) {
-  if (ambiente === 1) return 'MODO REAL: a nota sera emitida de verdade na SEFIN.';
+  if (ambiente === 1) {
+    return 'MODO REAL — AMBIENTE 1 (PRODUÇÃO): nota oficial será enviada à SEFIN.';
+  }
   if (ambiente === 2 && pastaEnsaio) {
-    return `ENSAIO (produção restrita): grava só em ${pastaEnsaio}`;
+    return `ENSAIO — AMBIENTE 2 (HOMOLOGAÇÃO/PRODUÇÃO RESTRITA): sem validade fiscal; arquivos em ${pastaEnsaio}.`;
   }
   return null;
 }

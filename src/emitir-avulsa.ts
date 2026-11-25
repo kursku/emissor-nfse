@@ -195,13 +195,13 @@ export async function executarEmissaoAvulsa(
     exigirEmissaoValida(input, { idVenda: nota.idVenda });
     exigirLeiauteNovoPermitido(ambiente, agora());
     const pastaEnsaio = mkdtempSync(join(tmpdir(), 'nfse-ensaio-'));
+    const mensagemEnsaio = mensagemModoReal(ambiente, pastaEnsaio);
+    if (mensagemEnsaio) log(mensagemEnsaio);
     const resultado = await (await carregarEmissor(deps.emitirNfse))(
       input,
       undefined,
       { outputDir: pastaEnsaio },
     );
-    const mensagemEnsaio = mensagemModoReal(ambiente, pastaEnsaio);
-    if (mensagemEnsaio) log(mensagemEnsaio);
     const decisao = classificarRespostaEmissao(resultado);
     log(textoEnsaio(decisao));
     if (decisao.estado === 'rejeitada') throw new Error(decisao.mensagem);
@@ -231,8 +231,6 @@ export async function executarEmissaoAvulsa(
   }
 
   exigirLeiauteNovoPermitido(ambiente, agora());
-  const mensagem = mensagemModoReal(ambiente);
-  if (mensagem) log(mensagem);
   if (buscarNota(nota.idVenda)) {
     console.log(`Venda ${nota.idVenda} já possui Nota. Emissão não enviada.`);
     return;
@@ -260,6 +258,8 @@ export async function executarEmissaoAvulsa(
   }
   input.nDPS = String(tentativa.ndps);
 
+  const mensagem = mensagemModoReal(ambiente);
+  if (mensagem) log(mensagem);
   console.log(`Emitindo nDPS=${input.nDPS} para ${input.tomador.xNome} (${nota.idVenda})...`);
   // Só aqui o emissor entra: importar no topo criaria diretórios e trocaria o
   // agente HTTPS global mesmo numa conferência.

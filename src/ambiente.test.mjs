@@ -23,10 +23,13 @@ test('--real em produção restrita é recusado antes da emissão', () => {
 });
 
 test('mensagens de emissão real distinguem produção e ensaio', () => {
-  assert.equal(mensagemModoReal(1), 'MODO REAL: a nota sera emitida de verdade na SEFIN.');
+  assert.equal(
+    mensagemModoReal(1),
+    'MODO REAL — AMBIENTE 1 (PRODUÇÃO): nota oficial será enviada à SEFIN.',
+  );
   assert.equal(
     mensagemModoReal(2, 'C:\\Temp\\nfse-ensaio-123'),
-    'ENSAIO (produção restrita): grava só em C:\\Temp\\nfse-ensaio-123',
+    'ENSAIO — AMBIENTE 2 (HOMOLOGAÇÃO/PRODUÇÃO RESTRITA): sem validade fiscal; arquivos em C:\\Temp\\nfse-ensaio-123.',
   );
 });
 

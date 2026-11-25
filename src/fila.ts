@@ -129,6 +129,8 @@ export async function processarVenda(
         throw new ErroAntesDoEnvio('Lock da fila real perdido; emissão interrompida sem chamar o emissor.');
       }
     };
+    const mensagem = mensagemModoReal(config.ambiente);
+    if (mensagem) console.log(mensagem);
     const resultado = await emitirNfse(input, antesDoEnvio);
     const decisao = classificarRespostaEmissao(resultado);
     if (decisao.estado === 'rejeitada') {
@@ -220,11 +222,6 @@ async function main(): Promise<void> {
     process.exitCode = 1;
     return;
   }
-  if (MODO_REAL) {
-    const mensagem = mensagemModoReal(config.ambiente);
-    if (mensagem) console.log(mensagem);
-  }
-
   if (MODO_REAL) mkdirSync(dirname(LOCK_PATH), { recursive: true });
   const lock = MODO_REAL ? adquirirLockFilaReal(LOCK_PATH) : null;
   if (MODO_REAL && !lock) {
