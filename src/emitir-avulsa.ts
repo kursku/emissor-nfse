@@ -11,7 +11,8 @@
  *   "produto": "consultoria",
  *   "tomador": { "CNPJ": "...", "xNome": "...", "end": {...}, "email": "..." },
  *   "xDescServ": "...", "vServ": 100.0,
- *   "cTribNac": "080201", "cNBS": "122051900"
+ *   "cTribNac": "080201", "cNBS": "122051900",
+ *   "dCompet": "2026-10-31" (opcional)
  * }
  *
  * Emissão em produção é irreversível — só se corrige por substituição, no prazo
@@ -180,7 +181,8 @@ export async function executarEmissaoAvulsa(
   // Ensaio usa um identificador local de 13 dígitos, sem consultar ou avançar
   // o contador de produção. A SEFIN restrita recebe a DPS normalmente.
   if (ensaio) {
-    const nDPS = String(agora().getTime());
+    const instanteEmissao = agora();
+    const nDPS = String(instanteEmissao.getTime());
     const input: EmissaoInput = {
       nDPS,
       tomador: nota.tomador,
@@ -188,12 +190,13 @@ export async function executarEmissaoAvulsa(
       vServ: nota.vServ,
       cTribNac: nota.cTribNac,
       cNBS: nota.cNBS,
+      ...(nota.dCompet !== undefined ? { dCompet: nota.dCompet } : {}),
       cIndOp: nota.cIndOp ?? '100301',
       cClassTrib: nota.cClassTrib ?? '000001',
       ...(nota.pTotTribSN !== undefined ? { pTotTribSN: nota.pTotTribSN } : {}),
     };
-    exigirEmissaoValida(input, { idVenda: nota.idVenda });
-    exigirLeiauteNovoPermitido(ambiente, agora());
+    exigirEmissaoValida(input, { idVenda: nota.idVenda }, instanteEmissao);
+    exigirLeiauteNovoPermitido(ambiente, instanteEmissao);
     const pastaEnsaio = mkdtempSync(join(tmpdir(), 'nfse-ensaio-'));
     const resultado = await (await carregarEmissor(deps.emitirNfse))(
       input,
@@ -209,6 +212,7 @@ export async function executarEmissaoAvulsa(
   }
 
   inicializar();
+  const instanteEmissao = agora();
   const nDPS = String(proximo(outputDir));
   const input: EmissaoInput = {
     nDPS,
@@ -217,11 +221,12 @@ export async function executarEmissaoAvulsa(
     vServ: nota.vServ,
     cTribNac: nota.cTribNac,
     cNBS: nota.cNBS,
+    ...(nota.dCompet !== undefined ? { dCompet: nota.dCompet } : {}),
     cIndOp: nota.cIndOp ?? '100301',
     cClassTrib: nota.cClassTrib ?? '000001',
     ...(nota.pTotTribSN !== undefined ? { pTotTribSN: nota.pTotTribSN } : {}),
   };
-  exigirEmissaoValida(input, { idVenda: nota.idVenda });
+  exigirEmissaoValida(input, { idVenda: nota.idVenda }, instanteEmissao);
 
   // Sem --real: confere e para. Onde o municipio nao tem producao restrita,
   // esta e a unica conferencia possivel antes de a nota valer de verdade.
@@ -230,7 +235,7 @@ export async function executarEmissaoAvulsa(
     return;
   }
 
-  exigirLeiauteNovoPermitido(ambiente, agora());
+  exigirLeiauteNovoPermitido(ambiente, instanteEmissao);
   const mensagem = mensagemModoReal(ambiente);
   if (mensagem) log(mensagem);
   if (buscarNota(nota.idVenda)) {

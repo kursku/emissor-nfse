@@ -30,6 +30,8 @@ export interface TomadorEndereco {
 
 export interface EmissaoInput {
   nDPS: string;
+  /** Competência fiscal da prestação, no formato AAAA-MM-DD. */
+  dCompet?: string;
   tomador: {
     /** CPF (11 dígitos) ou CNPJ (14 dígitos) — normalizado sem pontuação */
     CNPJ?: string;
@@ -118,7 +120,7 @@ export function montarDps(
   cfg: ConfigPrestador,
   agora: Date = new Date(),
 ): LayoutDPSNovo {
-  const { dhEmi, dCompet } = momentoSP(agora);
+  const { dhEmi, dCompet: competenciaHoje } = momentoSP(agora);
   const meEpp = cfg.regTrib.opSimpNac === 3;
   const vServ = parseValorMonetario(input.vServ);
   return {
@@ -128,7 +130,7 @@ export function montarDps(
       verAplic: '1.0',
       serie: '00001',
       nDPS: input.nDPS,
-      dCompet,
+      dCompet: input.dCompet ?? competenciaHoje,
       tpEmit: 1,
       finNFSe: 0,
       cLocEmi: cfg.codMunicipio,

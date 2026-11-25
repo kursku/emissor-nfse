@@ -73,6 +73,12 @@ test('competencia e data de emissao no fuso de Sao Paulo', () => {
   assert.equal(infDps.dhEmi, '2026-01-31T09:00:00-03:00');
 });
 
+test('monta DPS com competencia informada sem alterar a data de emissao', () => {
+  const { infDps } = montarDps({ ...INPUT, dCompet: '2026-01-30' }, CFG, AGORA);
+  assert.equal(infDps.dCompet, '2026-01-30');
+  assert.equal(infDps.dhEmi, '2026-01-31T09:00:00-03:00');
+});
+
 test('21:00 em Sao Paulo no dia 31 nao vira competencia de fevereiro', () => {
   // 2026-02-01T00:00Z ainda e 2026-01-31T21:00 em Sao Paulo.
   assert.equal(momentoSP(new Date('2026-02-01T00:00:00Z')).dCompet, '2026-01-31');

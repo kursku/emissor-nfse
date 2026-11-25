@@ -38,7 +38,7 @@ test("avulsa em modo real na produção restrita faz ensaio sem persistir", asyn
   const proibido = (nome: string) => () => { throw new Error(`${nome} não deveria ser chamado`); };
 
   try {
-    await executarEmissaoAvulsa(nota, {
+    await executarEmissaoAvulsa({ ...nota, dCompet: "2026-10-01" }, {
       ambiente: 2,
       outputDir,
       agora: () => new Date("2026-10-22T12:00:00Z"),
@@ -48,8 +48,9 @@ test("avulsa em modo real na produção restrita faz ensaio sem persistir", asyn
       buscarNotaPorVenda: proibido("buscarNotaPorVenda"),
       criarEReservarEmissao: proibido("criarEReservarEmissao"),
       concluirEmissao: proibido("concluirEmissao"),
-      emitirNfse: async (input: { nDPS: string }, _antesDoEnvio, options) => {
+      emitirNfse: async (input: { nDPS: string; dCompet?: string }, _antesDoEnvio, options) => {
         chamadas.push(input.nDPS);
+        assert.equal(input.dCompet, "2026-10-01");
         pastaEnsaio = options?.outputDir;
         assert.ok(pastaEnsaio);
         assert.notEqual(pastaEnsaio, outputDir);
@@ -91,7 +92,7 @@ test("avulsa em produção real preserva a persistência após o corte", async (
   let inicializado = 0;
   let reservado = 0;
 
-  await executarEmissaoAvulsa(nota, {
+  await executarEmissaoAvulsa({ ...nota, dCompet: "2026-11-30" }, {
     ambiente: 1,
     outputDir,
     agora: () => new Date("2026-12-01T03:00:00Z"),
@@ -112,8 +113,9 @@ test("avulsa em produção real preserva a persistência após o corte", async (
       };
     },
     concluirEmissao: (registro: unknown) => { concluido.push(registro); },
-    emitirNfse: async (input: { nDPS: string }) => {
+    emitirNfse: async (input: { nDPS: string; dCompet?: string }) => {
       chamadas.push(input.nDPS);
+      assert.equal(input.dCompet, "2026-11-30");
       return { chNFSe: "9".repeat(50) };
     },
   });
@@ -123,6 +125,34 @@ test("avulsa em produção real preserva a persistência após o corte", async (
   assert.deepEqual(chamadas, ["41"]);
   assert.equal(concluido.length, 1);
   assert.deepEqual(logs, ["MODO REAL: a nota sera emitida de verdade na SEFIN."]);
+});
+
+test("avulsa recusa competencia malformada, inexistente ou futura antes do emissor", async () => {
+  const chamadas: string[] = [];
+  const casos = [
+    ["10/2026", /dCompet.*AAAA-MM-DD/],
+    ["2026-02-30", /dCompet.*AAAA-MM-DD/],
+    ["2026-12-02", /competência futura/],
+  ] as const;
+
+  for (const [dCompet, erro] of casos) {
+    await assert.rejects(
+      executarEmissaoAvulsa({ ...nota, dCompet }, {
+        ambiente: 1,
+        outputDir,
+        agora: () => new Date("2026-12-01T03:00:00Z"),
+        initDb: () => undefined,
+        proximoNDPS: () => 43,
+        emitirNfse: async () => {
+          chamadas.push(dCompet);
+          return { chNFSe: "7".repeat(50) };
+        },
+      }),
+      erro,
+    );
+  }
+
+  assert.deepEqual(chamadas, []);
 });
 
 test.after(() => rmSync(outputDir, { recursive: true, force: true }));
