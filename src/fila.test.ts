@@ -105,7 +105,17 @@ function executarFila(script: string, outputDir: string, ambiente = 2) {
   });
 }
 
-test("fila mostra ambiente 1 antes de chamar o emissor", () => {
+test("fila avisa uma vez por execucao e processarVenda retorna emitida", () => {
+  const source = readFileSync(new URL("./fila.ts", import.meta.url), "utf8");
+  const inicioMain = source.indexOf("async function main()");
+  const main = source.slice(inicioMain);
+  const inicioLoop = main.indexOf("for (let i = 0; i < fila.length; i++)");
+  const aviso = main.indexOf("mensagemModoReal(config.ambiente)");
+  const processar = source.slice(source.indexOf("export async function processarVenda"), inicioMain);
+  assert.ok(aviso >= 0 && aviso < inicioLoop);
+  assert.equal(main.match(/mensagemModoReal\(config\.ambiente\)/g)?.length, 1);
+  assert.doesNotMatch(processar, /mensagemModoReal\(/);
+
   const outputDir = mkdtempSync(join(tmpdir(), "nfse-fila-aviso-"));
   const result = executarFila(`
     const { initDb, listVendas, upsertVenda } = await import('./src/store.ts');
@@ -136,8 +146,8 @@ test("fila mostra ambiente 1 antes de chamar o emissor", () => {
 
   assert.equal(result.status, 0, result.stdout + result.stderr);
   const saida = JSON.parse(result.stdout.trim().split(/\r?\n/).at(-1) ?? "{}");
-  assert.equal(saida.eventos[0], "MODO REAL — AMBIENTE 1 (PRODUÇÃO): nota oficial será enviada à SEFIN.");
-  assert.equal(saida.eventos[1], "EMISSOR");
+  assert.deepEqual(saida.eventos, ["EMISSOR"]);
+  assert.equal(saida.resultado.resultado, "emitida");
 });
 
 test("fila não reserva Venda quando o fencing falha antes da reserva", () => {

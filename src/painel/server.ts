@@ -35,7 +35,7 @@ import {
   MENSAGEM_CHAVE_A_VERIFICAR,
 } from '../chave-acesso.js';
 import { ErroAntesDoEnvio, ehErroAntesDoEnvio } from '../emissao-erros.js';
-import { recusaModoReal } from '../ambiente.mjs';
+import { mensagemModoReal, recusaModoReal } from '../ambiente.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(__dirname, '..', '..');
@@ -592,6 +592,8 @@ app.post('/api/emitir', async (req, res) => {
       const detalhe = textoErroSefin(err) || 'erro não detalhado';
       throw new ErroAntesDoEnvio(`Falha ao carregar emissor antes do envio: ${detalhe}`, { cause: err });
     }
+    const mensagemAmbiente = ambiente === undefined ? null : mensagemModoReal(ambiente);
+    if (mensagemAmbiente) console.log(mensagemAmbiente);
     const resultado = await emissor(input);
     const decisao = classificarRespostaEmissao(resultado);
     let chave: string | null = null;

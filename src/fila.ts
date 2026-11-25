@@ -129,8 +129,6 @@ export async function processarVenda(
         throw new ErroAntesDoEnvio('Lock da fila real perdido; emissão interrompida sem chamar o emissor.');
       }
     };
-    const mensagem = mensagemModoReal(config.ambiente);
-    if (mensagem) console.log(mensagem);
     const resultado = await emitirNfse(input, antesDoEnvio);
     const decisao = classificarRespostaEmissao(resultado);
     if (decisao.estado === 'rejeitada') {
@@ -265,6 +263,11 @@ async function main(): Promise<void> {
     if (fila.length === 0) {
       console.log('Nenhuma venda pronta para processar.');
       return;
+    }
+
+    if (MODO_REAL) {
+      const mensagem = mensagemModoReal(config.ambiente);
+      if (mensagem) console.log(mensagem);
     }
 
   console.log(

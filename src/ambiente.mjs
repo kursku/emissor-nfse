@@ -41,10 +41,11 @@ export function recusaModoReal(real, ambiente) {
 
 export function mensagemModoReal(ambiente, pastaEnsaio) {
   if (ambiente === 1) {
-    return 'MODO REAL — AMBIENTE 1 (PRODUÇÃO): nota oficial será enviada à SEFIN.';
+    return 'PRODUÇÃO (NFSE_AMBIENTE=1): nota com validade fiscal.';
   }
-  if (ambiente === 2 && pastaEnsaio) {
-    return `ENSAIO — AMBIENTE 2 (HOMOLOGAÇÃO/PRODUÇÃO RESTRITA): sem validade fiscal; arquivos em ${pastaEnsaio}.`;
+  if (ambiente === 2) {
+    const arquivos = pastaEnsaio ? `; arquivos de ensaio somente em ${pastaEnsaio}` : '';
+    return `HOMOLOGAÇÃO/PRODUÇÃO RESTRITA (NFSE_AMBIENTE=2): sem validade fiscal; para produção configure NFSE_AMBIENTE=1${arquivos}.`;
   }
   return null;
 }

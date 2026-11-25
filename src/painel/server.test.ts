@@ -384,6 +384,10 @@ test("painel verifica o bundle antes de chamar o emissor", async () => {
   const antigoModo = process.env["EMITIR_REAL"];
   process.env["EMITIR_REAL"] = "1";
   const ordem: string[] = [];
+  const logAnterior = console.log;
+  console.log = (...args: unknown[]) => {
+    if (args.join(' ').startsWith('PRODUÇÃO (NFSE_AMBIENTE=1)')) ordem.push('aviso');
+  };
   const app = createPainelApp({
     panelPort: 0,
     dbPath,
@@ -415,8 +419,9 @@ test("painel verifica o bundle antes de chamar o emissor", async () => {
       body: pedidoValido,
     });
     assert.equal(response.status, 502);
-    assert.deepEqual(ordem, ["bundle", "emissor"]);
+    assert.deepEqual(ordem, ["bundle", "aviso", "emissor"]);
   } finally {
+    console.log = logAnterior;
     if (antigoModo === undefined) delete process.env["EMITIR_REAL"];
     else process.env["EMITIR_REAL"] = antigoModo;
     await new Promise<void>((resolve, reject) => server.close((err) => err ? reject(err) : resolve()));
