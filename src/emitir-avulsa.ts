@@ -99,6 +99,7 @@ async function conferir(input: EmissaoInput, nota: NotaAvulsa): Promise<void> {
   console.log('\n=== CONFERENCIA (nada foi enviado) ===\n');
   console.log(`  id_venda ....... ${nota.idVenda}`);
   console.log(`  nDPS ........... ${input.nDPS}   <- proximo numero que sera usado`);
+  if (input.dCompet !== undefined) console.log(`  dCompet ........ ${input.dCompet}`);
   console.log(`  tomador ........ ${input.tomador.xNome} (${doc})`);
   console.log(`  valor .......... ${valor}`);
   console.log(`  servico ........ cTribNac ${input.cTribNac} | cNBS ${input.cNBS}`);
@@ -213,9 +214,8 @@ export async function executarEmissaoAvulsa(
 
   inicializar();
   const instanteEmissao = agora();
-  const nDPS = String(proximo(outputDir));
   const input: EmissaoInput = {
-    nDPS,
+    nDPS: '1',
     tomador: nota.tomador,
     xDescServ: nota.xDescServ,
     vServ: nota.vServ,
@@ -226,6 +226,8 @@ export async function executarEmissaoAvulsa(
     cClassTrib: nota.cClassTrib ?? '000001',
     ...(nota.pTotTribSN !== undefined ? { pTotTribSN: nota.pTotTribSN } : {}),
   };
+  exigirEmissaoValida(input, { idVenda: nota.idVenda }, instanteEmissao);
+  input.nDPS = String(proximo(outputDir));
   exigirEmissaoValida(input, { idVenda: nota.idVenda }, instanteEmissao);
 
   // Sem --real: confere e para. Onde o municipio nao tem producao restrita,

@@ -131,7 +131,7 @@ export function validarEmissao(
   if (erroCNbs) problemas.push(erroCNbs);
 
   if (emissao.dCompet !== undefined) {
-    if (typeof emissao.dCompet !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(emissao.dCompet)) {
+    if (typeof emissao.dCompet !== 'string' || !/^20\d{2}-\d{2}-\d{2}$/.test(emissao.dCompet)) {
       problemas.push('dCompet deve ser uma data real no formato AAAA-MM-DD.');
     } else {
       const dataCompetencia = new Date(`${emissao.dCompet}T00:00:00.000Z`);
