@@ -61,6 +61,11 @@ const COMANDOS = {
     uso: 'nfse arquivar <id_venda>',
     desc: 'salva XML e DANFSe da nota em output/notas/<AAAA-MM>/<id_venda>/',
   },
+  reenviar: {
+    script: 'src/reenviar.ts',
+    uso: 'nfse reenviar <id_venda> [--enviar]',
+    desc: 'reenvia o e-mail da Nota (simulação por padrão; --enviar envia)',
+  },
   danfse: {
     script: 'src/danfse-cli.ts',
     uso: 'nfse danfse <nota.xml> [saida.pdf]',

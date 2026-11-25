@@ -88,6 +88,7 @@ Antes de 01/12/2026 a emissão real em produção fica bloqueada (veja Status).
 | `importar` | `nfse importar <planilha.xlsx>` | importa o relatório `sales_list` da Lastlink para o banco |
 | `contratos` | `nfse contratos <criar\|listar\|atualizar\|desativar\|gerar>` | contratos recorrentes: cadastra uma vez, gera as vendas do mês |
 | `arquivar` | `nfse arquivar <id_venda>` | salva XML e DANFSe da nota em `output/notas/<AAAA-MM>/<id_venda>/` |
+| `reenviar` | `nfse reenviar <id_venda> [--enviar]` | simula o reenvio de e-mail; `--enviar` realiza o envio |
 | `danfse` | `nfse danfse <nota.xml> [saida.pdf]` | gera DANFSe local sem enviar nada; sem browser salva HTML |
 
 Rode `nfse --help` para ver esta mesma lista a qualquer momento.
@@ -476,8 +477,8 @@ novo para a mesma competência não duplica vendas já geradas.
 
 ### Envio por e-mail
 
-O envio de e-mail com o DANFSe (o PDF da nota) só acontece no processamento
-em lote da fila, quando rodado com `--real`:
+O envio automático de e-mail com o DANFSe acontece no processamento em lote
+da fila, quando rodado com `--real`:
 
 ```
 nfse fila --limite 1 --real
@@ -488,14 +489,26 @@ no `.env`, cada nota emitida de verdade por esse comando é enviada por
 e-mail para o cliente automaticamente. Sem essas variáveis, a fila continua
 emitindo normalmente — só não manda e-mail.
 
-**Nenhum outro caminho de emissão envia e-mail hoje:**
+Para reenviar o e-mail de uma Nota já emitida, use:
+
+```
+nfse reenviar <id_venda>
+nfse reenviar <id_venda> --enviar
+```
+
+Sem `--enviar`, o comando mostra o destinatário mascarado, a chave e os
+caminhos locais registrados, sem consultar o ADN nem enviar nada. Com
+`--enviar`, ele usa o e-mail salvo na Venda e a mesma lógica de DANFSe do lote.
+O envio automático continua restrito ao processamento da fila.
+
+**Outros caminhos de emissão não enviam e-mail automaticamente:**
 
 - `nfse emitir nota.json --real` (nota avulsa) emite a nota, mas não envia
   e-mail.
 - Emitir pelo painel web (`nfse painel`) também não envia e-mail.
 
-Se precisar mandar o DANFSe de uma nota emitida por esses dois caminhos,
-envie manualmente.
+Para essas notas, use `nfse reenviar <id_venda>` e confirme o envio com
+`--enviar`.
 
 ## 6. Solução de problemas
 
