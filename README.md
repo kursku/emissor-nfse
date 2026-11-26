@@ -376,6 +376,11 @@ cliente e do serviço:
 nfse emitir nota.json --real
 ```
 
+Os campos obrigatórios são `idVenda`, `tomador`, `xDescServ`, `vServ`,
+`cTribNac` e `cNBS`. `dCompet` é opcional, no formato `AAAA-MM-DD`; sem ele,
+vale a data de emissão em São Paulo. Competência posterior à data de emissão é
+recusada.
+
 Com `NFSE_AMBIENTE=2` (o padrão), a flag `--real` vira um ensaio na produção
 restrita: o XML assinado, que contém dados do tomador, e o resultado são
 gravados somente em uma pasta em `%TEMP%`, impressa na saída. Ela não é

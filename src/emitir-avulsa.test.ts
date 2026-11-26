@@ -18,6 +18,10 @@ process.env["EMITIR_REAL"] = "1";
 
 const { executarEmissaoAvulsa } = await import("./emitir-avulsa.js");
 
+function notaComDCompet(dCompet: unknown): Parameters<typeof executarEmissaoAvulsa>[0] {
+  return { ...nota, dCompet } as Parameters<typeof executarEmissaoAvulsa>[0];
+}
+
 const nota = {
   idVenda: "venda-teste-avulsa",
   tomador: {
@@ -38,7 +42,7 @@ test("avulsa em modo real na produção restrita faz ensaio sem persistir", asyn
   const proibido = (nome: string) => () => { throw new Error(`${nome} não deveria ser chamado`); };
 
   try {
-    await executarEmissaoAvulsa(nota, {
+    await executarEmissaoAvulsa({ ...nota, dCompet: "2026-10-01" }, {
       ambiente: 2,
       outputDir,
       agora: () => new Date("2026-10-22T12:00:00Z"),
@@ -48,9 +52,10 @@ test("avulsa em modo real na produção restrita faz ensaio sem persistir", asyn
       buscarNotaPorVenda: proibido("buscarNotaPorVenda"),
       criarEReservarEmissao: proibido("criarEReservarEmissao"),
       concluirEmissao: proibido("concluirEmissao"),
-      emitirNfse: async (input: { nDPS: string }, _antesDoEnvio, options) => {
+      emitirNfse: async (input: { nDPS: string; dCompet?: string }, _antesDoEnvio, options) => {
         assert.match(logs[0] ?? '', /^HOMOLOGAÇÃO\/PRODUÇÃO RESTRITA \(NFSE_AMBIENTE=2\)/);
         chamadas.push(input.nDPS);
+        assert.equal(input.dCompet, "2026-10-01");
         pastaEnsaio = options?.outputDir;
         assert.ok(pastaEnsaio);
         assert.notEqual(pastaEnsaio, outputDir);
@@ -93,7 +98,7 @@ test("avulsa em produção real preserva a persistência após o corte", async (
   let inicializado = 0;
   let reservado = 0;
 
-  await executarEmissaoAvulsa(nota, {
+  await executarEmissaoAvulsa({ ...nota, dCompet: "2026-11-30" }, {
     ambiente: 1,
     outputDir,
     agora: () => new Date("2026-12-01T03:00:00Z"),
@@ -114,9 +119,10 @@ test("avulsa em produção real preserva a persistência após o corte", async (
       };
     },
     concluirEmissao: (registro: unknown) => { concluido.push(registro); },
-    emitirNfse: async (input: { nDPS: string }) => {
+    emitirNfse: async (input: { nDPS: string; dCompet?: string }) => {
       assert.equal(logs[0], "PRODUÇÃO (NFSE_AMBIENTE=1): nota com validade fiscal.");
       chamadas.push(input.nDPS);
+      assert.equal(input.dCompet, "2026-11-30");
       return { chNFSe: "9".repeat(50) };
     },
   });
@@ -127,6 +133,153 @@ test("avulsa em produção real preserva a persistência após o corte", async (
   assert.equal(concluido.length, 1);
   assert.deepEqual(logs, ["PRODUÇÃO (NFSE_AMBIENTE=1): nota com validade fiscal."]);
   assert.equal(logs.filter((linha) => linha.startsWith('PRODUÇÃO (NFSE_AMBIENTE=1)')).length, 1);
+});
+
+test("avulsa recusa competencia malformada, inexistente ou futura antes do emissor", async () => {
+  const chamadas: string[] = [];
+  const casos = [
+    ["10/2026", /dCompet.*AAAA-MM-DD/],
+    ["2026-02-30", /dCompet.*AAAA-MM-DD/],
+    ["2026-12-02", /competência futura/],
+  ] as const;
+
+  for (const [dCompet, erro] of casos) {
+    await assert.rejects(
+      executarEmissaoAvulsa({ ...nota, dCompet }, {
+        ambiente: 1,
+        outputDir,
+        agora: () => new Date("2026-12-01T03:00:00Z"),
+        initDb: () => undefined,
+        proximoNDPS: () => 43,
+        emitirNfse: async () => {
+          chamadas.push(dCompet);
+          return { chNFSe: "7".repeat(50) };
+        },
+      }),
+      erro,
+    );
+  }
+
+  assert.deepEqual(chamadas, []);
+});
+
+test("dCompet só aceita anos 20xx", async () => {
+  for (const dCompet of ["0001-01-01", "1900-01-01"]) {
+    await assert.rejects(
+      executarEmissaoAvulsa(notaComDCompet(dCompet), {
+        ambiente: 1,
+        outputDir,
+        agora: () => new Date("2026-12-01T03:00:00Z"),
+        initDb: () => undefined,
+        proximoNDPS: () => 60,
+        emitirNfse: async () => { throw new Error("emissor nao deveria ser chamado"); },
+      }),
+      /dCompet.*AAAA-MM-DD/,
+    );
+  }
+});
+
+test("dCompet invalido nao consulta nem reserva nDPS na emissao real", async () => {
+  let consultas = 0;
+  let reservas = 0;
+  await assert.rejects(
+    executarEmissaoAvulsa(notaComDCompet("1900-01-01"), {
+      ambiente: 1,
+      outputDir,
+      agora: () => new Date("2026-12-01T03:00:00Z"),
+      initDb: () => undefined,
+      proximoNDPS: () => { consultas++; return 61; },
+      buscarNotaPorVenda: () => null,
+      criarEReservarEmissao: () => { reservas++; return null; },
+    }),
+    /dCompet/,
+  );
+  assert.equal(consultas, 0);
+  assert.equal(reservas, 0);
+});
+
+test("dCompet acompanha a data de Sao Paulo, hoje e ano bissexto", async () => {
+  const aceitos = [
+    ["2026-12-01", "2026-12-01T03:00:00Z"],
+    ["2028-02-29", "2028-03-01T03:00:00Z"],
+  ] as const;
+  for (const [dCompet, instante] of aceitos) {
+    let recebida: string | undefined;
+    await executarEmissaoAvulsa(notaComDCompet(dCompet), {
+      ambiente: 1,
+      outputDir,
+      agora: () => new Date(instante),
+      initDb: () => undefined,
+      proximoNDPS: () => 62,
+      buscarNotaPorVenda: () => null,
+      criarEReservarEmissao: () => ({
+        id: 1,
+        id_venda: nota.idVenda,
+        ndps: 62,
+        estado: "reservada",
+        chave_acesso: null,
+        criada_em: instante,
+        atualizada_em: instante,
+      }),
+      concluirEmissao: () => undefined,
+      emitirNfse: async (input) => {
+        recebida = input.dCompet;
+        return { chNFSe: "7".repeat(50) };
+      },
+    });
+    assert.equal(recebida, dCompet);
+  }
+});
+
+test("dCompet do dia seguinte ainda e futuro antes da meia-noite em Sao Paulo", async () => {
+  await assert.rejects(
+    executarEmissaoAvulsa(notaComDCompet("2026-12-01"), {
+      ambiente: 1,
+      outputDir,
+      agora: () => new Date("2026-12-01T01:00:00Z"),
+      initDb: () => undefined,
+      proximoNDPS: () => 63,
+    }),
+    /competência futura/,
+  );
+});
+
+test("dCompet nao-string e rejeitado na avulsa e no ensaio antes do emissor", async () => {
+  for (const dCompet of [null, 20261001]) {
+    let emissoes = 0;
+    await assert.rejects(
+      executarEmissaoAvulsa(notaComDCompet(dCompet), {
+        ambiente: 2,
+        outputDir,
+        agora: () => new Date("2026-12-01T03:00:00Z"),
+        emitirNfse: async () => { emissoes++; return { chNFSe: "6".repeat(50) }; },
+      }),
+      /dCompet/,
+    );
+    assert.equal(emissoes, 0);
+  }
+});
+
+test("conferencia inclui dCompet informado", async () => {
+  const anterior = process.env["EMITIR_REAL"];
+  const logs: string[] = [];
+  const originalLog = console.log;
+  process.env["EMITIR_REAL"] = "0";
+  console.log = (...args: unknown[]) => logs.push(args.join(" "));
+  try {
+    await executarEmissaoAvulsa(notaComDCompet("2026-11-30"), {
+      ambiente: 1,
+      outputDir,
+      agora: () => new Date("2026-12-01T03:00:00Z"),
+      initDb: () => undefined,
+      proximoNDPS: () => 64,
+    });
+  } finally {
+    console.log = originalLog;
+    if (anterior === undefined) delete process.env["EMITIR_REAL"];
+    else process.env["EMITIR_REAL"] = anterior;
+  }
+  assert.match(logs.join("\n"), /dCompet.*2026-11-30/);
 });
 
 test.after(() => rmSync(outputDir, { recursive: true, force: true }));

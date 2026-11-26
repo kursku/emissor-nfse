@@ -8,6 +8,7 @@ import {
 } from './validacoes.mjs';
 import { chaveAcessoValida } from './chave-acesso.js';
 import { cIndOpExigeEndereco } from './fila-helpers.js';
+import { momentoSP } from './montar-dps.js';
 
 export interface IdentificadoresEmissao {
   idVenda?: unknown;
@@ -64,6 +65,7 @@ export function exigirIdentificadorSeguro(valor: unknown, nome: string): void {
 export function validarEmissao(
   input: unknown,
   identificadores: IdentificadoresEmissao = {},
+  agora: Date = new Date(),
 ): string[] {
   const problemas: string[] = [];
   const emissao = registro(input);
@@ -128,6 +130,22 @@ export function validarEmissao(
   const erroCNbs = cNBSInvalido(emissao.cNBS);
   if (erroCNbs) problemas.push(erroCNbs);
 
+  if (emissao.dCompet !== undefined) {
+    if (typeof emissao.dCompet !== 'string' || !/^20\d{2}-\d{2}-\d{2}$/.test(emissao.dCompet)) {
+      problemas.push('dCompet deve ser uma data real no formato AAAA-MM-DD.');
+    } else {
+      const dataCompetencia = new Date(`${emissao.dCompet}T00:00:00.000Z`);
+      if (
+        Number.isNaN(dataCompetencia.getTime()) ||
+        dataCompetencia.toISOString().slice(0, 10) !== emissao.dCompet
+      ) {
+        problemas.push('dCompet deve ser uma data real no formato AAAA-MM-DD.');
+      } else if (emissao.dCompet > momentoSP(agora).dCompet) {
+        problemas.push('dCompet não pode ser competência futura.');
+      }
+    }
+  }
+
   const pTotTribSN = emissao.pTotTribSN;
   if (
     pTotTribSN !== undefined &&
@@ -154,8 +172,9 @@ export function validarEmissao(
 export function exigirEmissaoValida(
   input: unknown,
   identificadores: IdentificadoresEmissao = {},
+  agora: Date = new Date(),
 ): void {
-  const problemas = validarEmissao(input, identificadores);
+  const problemas = validarEmissao(input, identificadores, agora);
   if (problemas.length > 0) {
     throw new Error(`Emissão inválida:\n  - ${problemas.join('\n  - ')}`);
   }
