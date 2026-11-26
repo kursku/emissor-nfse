@@ -83,7 +83,7 @@ test("fila e emissão avulsa usam diagnóstico seguro nos erros", () => {
   assert.doesNotMatch(avulsa, /FALHA na emissão:', err/);
 });
 
-function executarFila(script: string, outputDir: string) {
+function executarFila(script: string, outputDir: string, ambiente = 2) {
   return spawnSync(process.execPath, ["--import", "tsx", "--input-type=module", "-e", script], {
     cwd: process.cwd(),
     encoding: "utf8",
@@ -96,11 +96,59 @@ function executarFila(script: string, outputDir: string) {
       NFSE_CERT_PASSWORD: "teste",
       NFSE_IM: "1",
       NFSE_UF: "SP",
-      NFSE_AMBIENTE: "2",
+      NFSE_AMBIENTE: String(ambiente),
       NFSE_OUTPUT_DIR: outputDir,
+      RESEND_API_KEY: "",
+      RESEND_FROM_NOTAS: "",
+      RESEND_FROM: "",
     },
   });
 }
+
+test("fila avisa uma vez por execucao e processarVenda retorna emitida", () => {
+  const source = readFileSync(new URL("./fila.ts", import.meta.url), "utf8");
+  const inicioMain = source.indexOf("async function main()");
+  const main = source.slice(inicioMain);
+  const inicioLoop = main.indexOf("for (let i = 0; i < fila.length; i++)");
+  const aviso = main.indexOf("mensagemModoReal(config.ambiente)");
+  const processar = source.slice(source.indexOf("export async function processarVenda"), inicioMain);
+  assert.ok(aviso >= 0 && aviso < inicioLoop);
+  assert.equal(main.match(/mensagemModoReal\(config\.ambiente\)/g)?.length, 1);
+  assert.doesNotMatch(processar, /mensagemModoReal\(/);
+
+  const outputDir = mkdtempSync(join(tmpdir(), "nfse-fila-aviso-"));
+  const result = executarFila(`
+    const { initDb, listVendas, upsertVenda } = await import('./src/store.ts');
+    const { processarVenda } = await import('./src/fila.ts');
+    const db = initDb(':memory:');
+    db.prepare('INSERT INTO mapa_produtos (produto, ctrib_nac, cnbs, xdesc_serv) VALUES (?, ?, ?, ?)')
+      .run('produto-teste', '080201', '122051900', 'Servico');
+    upsertVenda({ id_venda: 'venda-aviso', produto: 'produto-teste', valor: 100,
+      cpf_cnpj: '11444777000161', nome: 'Tomador Sintetico', cep: '13000000', cidade: 'Campinas', uf: 'SP',
+      cmun: '3509502', rua: 'Rua Sintetica', numero: '1', bairro: 'Centro', fila: 'pronta', status: 'pronta' });
+    const venda = listVendas({ id_venda: 'venda-aviso' })[0];
+    const eventos = [];
+    const originalLog = console.log;
+    console.log = (mensagem) => eventos.push(String(mensagem));
+    let resultado;
+    try {
+      resultado = await processarVenda(venda, db, 1, () => true, async (_input, antesDoEnvio) => {
+        eventos.push('EMISSOR');
+        antesDoEnvio?.();
+        return { chNFSe: '8'.repeat(50), cStat: '100' };
+      });
+    } finally {
+      console.log = originalLog;
+    }
+    console.log(JSON.stringify({ eventos, resultado }));
+  `, outputDir, 1);
+  rmSync(outputDir, { recursive: true, force: true });
+
+  assert.equal(result.status, 0, result.stdout + result.stderr);
+  const saida = JSON.parse(result.stdout.trim().split(/\r?\n/).at(-1) ?? "{}");
+  assert.deepEqual(saida.eventos, ["EMISSOR"]);
+  assert.equal(saida.resultado.resultado, "emitida");
+});
 
 test("fila não reserva Venda quando o fencing falha antes da reserva", () => {
   const outputDir = mkdtempSync(join(tmpdir(), "nfse-fila-fencing-"));

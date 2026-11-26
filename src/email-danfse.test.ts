@@ -121,3 +121,45 @@ test('falha ao obter DANFSe ainda envia sem anexo', async () => {
     await rm(outputDir, { recursive: true, force: true });
   }
 });
+
+test('reenvio obrigatório falha sem DANFSe e não chama Resend', async () => {
+  const outputDir = await mkdtemp(join(tmpdir(), 'nfse-email-required-'));
+  const apiKeyAnterior = process.env.RESEND_API_KEY;
+  const fromAnterior = process.env.RESEND_FROM;
+  process.env.RESEND_API_KEY = 'test-only-key';
+  process.env.RESEND_FROM = 'sender@example.invalid';
+  try {
+    for (const obterDanfse of [
+      async () => null,
+      async () => ({ html: '<html>sem PDF</html>' }),
+      async () => { throw new Error('falha sintética'); },
+    ]) {
+      let chamadas = 0;
+      await assert.rejects(
+        enviarEmailNota(
+          { id_venda: 'venda-sintetica', email: 'cliente@example.invalid', nome: 'Cliente Sintetico' },
+          chave,
+          {
+            outputDir,
+            ambiente: 2,
+            browser: '',
+            exigirDanfse: true,
+            obterDanfse,
+            fetch: (async () => {
+              chamadas++;
+              return { ok: true, status: 200, text: async () => '' } as Response;
+            }) as typeof fetch,
+          },
+        ),
+        /DANFSe indisponível; e-mail não enviado/,
+      );
+      assert.equal(chamadas, 0);
+    }
+  } finally {
+    if (apiKeyAnterior === undefined) delete process.env.RESEND_API_KEY;
+    else process.env.RESEND_API_KEY = apiKeyAnterior;
+    if (fromAnterior === undefined) delete process.env.RESEND_FROM;
+    else process.env.RESEND_FROM = fromAnterior;
+    await rm(outputDir, { recursive: true, force: true });
+  }
+});
