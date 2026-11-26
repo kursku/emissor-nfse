@@ -20,6 +20,12 @@ function emailEstrito(email: string): boolean {
   return local.length <= 64 && LOCAL_EMAIL_RE.test(local) && DOMAIN_EMAIL_RE.test(dominio);
 }
 
+export function erroEmail(email?: string): string | null {
+  if (!email) return 'venda sem e-mail';
+  if (!emailEstrito(email)) return 'venda com e-mail inválido';
+  return null;
+}
+
 export function escaparHtml(valor: string | null | undefined): string {
   const escapes: Record<string, string> = {
     '&': '&amp;',
@@ -42,8 +48,8 @@ export function montarHtmlNota(nome: string | null | undefined, chave: string, t
 
 /** Retorna a mensagem de erro do primeiro pré-requisito ausente, ou null se ok. */
 export function erroEnvioEmail({ email, apiKey, from }: DadosEnvioEmail): string | null {
-  if (!email) return 'venda sem e-mail';
-  if (!emailEstrito(email)) return 'venda com e-mail inválido';
+  const erro = erroEmail(email);
+  if (erro) return erro;
   if (!apiKey) return 'RESEND_API_KEY ausente';
   if (!from) return 'RESEND_FROM_NOTAS/RESEND_FROM ausente';
   return null;
