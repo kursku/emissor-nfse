@@ -80,6 +80,7 @@ export interface PainelDependencies {
   dbPath?: string;
   defaults?: EmissaoInput;
   ambiente?: 1 | 2;
+  envPath?: string;
   agora?: Date;
   exigirBundlePatchado?: () => void;
   now?: () => number;
@@ -180,10 +181,23 @@ export function lerAmbiente(env: NodeJS.ProcessEnv = process.env, envPath = join
   try {
     arquivo = parseEnv(readFileSync(envPath, 'utf8'));
   } catch (err: unknown) {
-    if ((err as NodeJS.ErrnoException).code !== 'ENOENT') return null;
+    const codigo = (err as NodeJS.ErrnoException).code;
+    if (codigo !== 'ENOENT') {
+      console.error(`[server] Falha ao ler ${envPath}: ${codigo ?? 'erro sem código'}`);
+      return null;
+    }
   }
   const valor = Number((env['NFSE_AMBIENTE'] ?? arquivo['NFSE_AMBIENTE'])?.trim() || '2');
   return valor === 1 || valor === 2 ? valor : null;
+}
+
+function textoFaixa(ambiente: 1 | 2 | null, real: boolean): string {
+  const mensagem = (ambiente && mensagemModoReal(ambiente))
+    || 'Ambiente desconhecido: confira NFSE_AMBIENTE (1 ou 2) no .env.';
+  if (real) return mensagem;
+  // Em simulação só o nome do ambiente serve de contexto: o resto do texto fala de validade fiscal.
+  const contexto = ambiente ? `Ambiente configurado: ${mensagem.split(':')[0]}.` : mensagem;
+  return `SIMULAÇÃO: nenhuma nota será enviada à SEFIN. ${contexto}`;
 }
 
 function textoDiagnostico(valor: unknown): string {
@@ -219,6 +233,8 @@ export function createPainelApp(deps: PainelDependencies = {}) {
   const marcarRejeitada = deps.marcarTentativaRejeitada ?? marcarTentativaRejeitada;
   const tokens = new Map<string, number>();
   const runSpawn = deps.spawnTsx ?? spawnTsx;
+  // Lido uma vez: config.ambiente também congela na primeira carga, e a faixa não pode mudar sozinha.
+  const ambienteDaFaixa = deps.ambiente ?? lerAmbiente(process.env, deps.envPath);
   const app = express();
   if (deps.dbPath !== undefined) {
     initDb(dbPath);
@@ -308,11 +324,10 @@ export function createPainelApp(deps: PainelDependencies = {}) {
   });
 
   app.get('/api/config', (_req, res) => {
-    const ambiente = deps.ambiente ?? lerAmbiente();
     res.json({
       modoSimulacao: !modoRealAtivo(),
       emitirReal: modoRealAtivo(),
-      mensagemAmbiente: (ambiente && mensagemModoReal(ambiente)) || 'Ambiente desconhecido: confira NFSE_AMBIENTE (1 ou 2) no .env.',
+      mensagemAmbiente: textoFaixa(ambienteDaFaixa, modoRealAtivo()),
     });
   });
 

@@ -282,8 +282,7 @@ let modoSimulacao = true;
 const painelToken = document.querySelector('meta[name="painel-token"]')?.content || '';
 fetch('/api/config').then(r => r.json()).then(cfg => {
   modoSimulacao = cfg.modoSimulacao;
-  document.getElementById('faixa-ambiente').textContent = cfg.mensagemAmbiente +
-    (modoSimulacao ? ' SIMULAÇÃO: nenhuma nota real será enviada à SEFIN.' : '');
+  document.getElementById('faixa-ambiente').textContent = cfg.mensagemAmbiente;
   if (modoSimulacao) {
     document.getElementById('btn-emitir').disabled = true;
     document.getElementById('btn-emitir').title = 'Desabilitado em modo simulacao (EMITIR_REAL nao esta ativo)';
