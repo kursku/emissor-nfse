@@ -49,6 +49,7 @@ test("avulsa em modo real na produção restrita faz ensaio sem persistir", asyn
       criarEReservarEmissao: proibido("criarEReservarEmissao"),
       concluirEmissao: proibido("concluirEmissao"),
       emitirNfse: async (input: { nDPS: string }, _antesDoEnvio, options) => {
+        assert.match(logs[0] ?? '', /^HOMOLOGAÇÃO\/PRODUÇÃO RESTRITA \(NFSE_AMBIENTE=2\)/);
         chamadas.push(input.nDPS);
         pastaEnsaio = options?.outputDir;
         assert.ok(pastaEnsaio);
@@ -66,7 +67,8 @@ test("avulsa em modo real na produção restrita faz ensaio sem persistir", asyn
     assert.equal(chamadas.length, 1);
     assert.equal(chamadas[0], "1792670400000");
     assert.match(chamadas[0], /^\d{13}$/);
-    assert.match(logs.join("\n"), /ENSAIO \(produção restrita\): grava só em /);
+    assert.match(logs.join("\n"), /arquivos de ensaio somente em /);
+    assert.equal(logs.filter((linha) => linha.startsWith('HOMOLOGAÇÃO/PRODUÇÃO RESTRITA')).length, 1);
     assert.match(logs.join("\n"), /AUTORIZADA\. chave=8{50}/);
     assert.ok(pastaEnsaio);
     const relativo = relative(tmpdir(), pastaEnsaio);
@@ -113,6 +115,7 @@ test("avulsa em produção real preserva a persistência após o corte", async (
     },
     concluirEmissao: (registro: unknown) => { concluido.push(registro); },
     emitirNfse: async (input: { nDPS: string }) => {
+      assert.equal(logs[0], "PRODUÇÃO (NFSE_AMBIENTE=1): nota com validade fiscal.");
       chamadas.push(input.nDPS);
       return { chNFSe: "9".repeat(50) };
     },
@@ -122,7 +125,8 @@ test("avulsa em produção real preserva a persistência após o corte", async (
   assert.equal(reservado, 1);
   assert.deepEqual(chamadas, ["41"]);
   assert.equal(concluido.length, 1);
-  assert.deepEqual(logs, ["MODO REAL: a nota sera emitida de verdade na SEFIN."]);
+  assert.deepEqual(logs, ["PRODUÇÃO (NFSE_AMBIENTE=1): nota com validade fiscal."]);
+  assert.equal(logs.filter((linha) => linha.startsWith('PRODUÇÃO (NFSE_AMBIENTE=1)')).length, 1);
 });
 
 test.after(() => rmSync(outputDir, { recursive: true, force: true }));

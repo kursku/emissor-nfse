@@ -220,11 +220,6 @@ async function main(): Promise<void> {
     process.exitCode = 1;
     return;
   }
-  if (MODO_REAL) {
-    const mensagem = mensagemModoReal(config.ambiente);
-    if (mensagem) console.log(mensagem);
-  }
-
   if (MODO_REAL) mkdirSync(dirname(LOCK_PATH), { recursive: true });
   const lock = MODO_REAL ? adquirirLockFilaReal(LOCK_PATH) : null;
   if (MODO_REAL && !lock) {
@@ -268,6 +263,11 @@ async function main(): Promise<void> {
     if (fila.length === 0) {
       console.log('Nenhuma venda pronta para processar.');
       return;
+    }
+
+    if (MODO_REAL) {
+      const mensagem = mensagemModoReal(config.ambiente);
+      if (mensagem) console.log(mensagem);
     }
 
   console.log(
