@@ -89,6 +89,19 @@ test('--enviar chama o sender uma vez com e-mail salvo e chave da Nota', async (
   assert.deepEqual(chamadas, [['cliente.teste@example.invalid', chave]]);
 });
 
+test('--enviar usa a mesma pasta de saída da simulação', async () => {
+  const { outputDir } = prepararBanco({ email: 'cliente.teste@example.invalid' });
+  let pastaUsada: string | undefined;
+
+  await reenviarNota('venda-sintetica', true, {
+    outputDir,
+    log: () => {},
+    enviarEmailNota: async (_venda, _chave, opcoes) => { pastaUsada = opcoes?.outputDir; },
+  });
+
+  assert.equal(pastaUsada, outputDir);
+});
+
 test('mascara enderecos de e-mail validos com caracteres variados', async () => {
   for (const [email, mascara] of [
     ["o'neil@x.co", "o***@x.co"],
@@ -110,6 +123,7 @@ test('parseArgs só aceita --enviar como o segundo e único argumento opcional',
     ['--enviar', 'X'],
     ['X', '--enviar', '--enviar'],
     ['X', '--real'],
+    ['X', ''],
   ]) {
     assert.throws(() => parseArgs(args), /Uso: nfse reenviar/);
   }

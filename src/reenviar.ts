@@ -40,13 +40,16 @@ export async function reenviarNota(
     return;
   }
 
-  await (deps.enviarEmailNota ?? enviarEmailNota)(venda, nota.chave_acesso, { exigirDanfse: true });
+  await (deps.enviarEmailNota ?? enviarEmailNota)(venda, nota.chave_acesso, {
+    exigirDanfse: true,
+    ...(deps.outputDir !== undefined ? { outputDir: deps.outputDir } : {}),
+  });
   log(`E-mail reenviado para ${mascararDocumentos(venda.email!)}.`);
 }
 
 export function parseArgs(args: string[]): { idVenda: string; enviar: boolean } {
   const idVenda = args[0];
-  if (!idVenda || idVenda.startsWith('--') || args.length > 2 || (args[1] && args[1] !== '--enviar')) {
+  if (!idVenda || idVenda.startsWith('--') || args.length > 2 || (args[1] !== undefined && args[1] !== '--enviar')) {
     throw new Error('Uso: nfse reenviar <id_venda> [--enviar]');
   }
   exigirIdentificadorSeguro(idVenda, 'id da Venda');
