@@ -12,8 +12,9 @@
  *   "tomador": { "CNPJ": "...", "xNome": "...", "end": {...}, "email": "..." },
  *   "xDescServ": "...", "vServ": 100.0,
  *   "cTribNac": "080201", "cNBS": "122051900",
- *   "dCompet": "2026-10-31" (opcional)
+ *   "dCompet": "2026-10-31"
  * }
+ * dCompet é opcional (AAAA-MM-DD, não futura); sem ele, vale a data da emissão.
  *
  * Emissão em produção é irreversível — só se corrige por substituição, no prazo
  * do município. Confira o JSON antes de rodar.
