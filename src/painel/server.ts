@@ -10,6 +10,7 @@ import { join, dirname, isAbsolute, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawn } from 'node:child_process';
 import { DatabaseSync } from 'node:sqlite';
+import { parseEnv } from 'node:util';
 import { DEFAULTS, exigirLeiauteNovoPermitido } from '../montar-dps.js';
 import type { EmissaoInput } from '../montar-dps.js';
 import {
@@ -172,6 +173,19 @@ function modoRealAtivo(): boolean {
   return process.env['EMITIR_REAL'] === '1';
 }
 
+// Mesmo valor que `config.ambiente`, sem importar config.ts (derruba o processo sem .env completo)
+// e sem carregar o .env no processo (um EMITIR_REAL=1 no arquivo ligaria o modo real do painel).
+export function lerAmbiente(env: NodeJS.ProcessEnv = process.env, envPath = join(ROOT, '.env')): 1 | 2 | null {
+  let arquivo: NodeJS.Dict<string> = {};
+  try {
+    arquivo = parseEnv(readFileSync(envPath, 'utf8'));
+  } catch (err: unknown) {
+    if ((err as NodeJS.ErrnoException).code !== 'ENOENT') return null;
+  }
+  const valor = Number((env['NFSE_AMBIENTE'] ?? arquivo['NFSE_AMBIENTE'])?.trim() || '2');
+  return valor === 1 || valor === 2 ? valor : null;
+}
+
 function textoDiagnostico(valor: unknown): string {
   if (typeof valor === 'string') return valor;
   try {
@@ -294,9 +308,11 @@ export function createPainelApp(deps: PainelDependencies = {}) {
   });
 
   app.get('/api/config', (_req, res) => {
+    const ambiente = deps.ambiente ?? lerAmbiente();
     res.json({
       modoSimulacao: !modoRealAtivo(),
       emitirReal: modoRealAtivo(),
+      mensagemAmbiente: (ambiente && mensagemModoReal(ambiente)) || 'Ambiente desconhecido: confira NFSE_AMBIENTE (1 ou 2) no .env.',
     });
   });
 

@@ -13,7 +13,8 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 
 import { mascaraDoc, mascararDocumentos } from "../mascara.js";
-import { createPainelApp, PAINEL_TOKEN_HEADER } from "./server.js";
+import { createPainelApp, lerAmbiente, PAINEL_TOKEN_HEADER } from "./server.js";
+import { mensagemModoReal } from "../ambiente.mjs";
 import { initDb, proximoNDPS, reservarEmissao, upsertVenda } from "../store.js";
 
 test("mascaraDoc mostra so os 3 primeiros e 2 ultimos digitos de um CPF", () => {
@@ -684,5 +685,82 @@ test('painel registra somente resumo seguro no erro da SEFIN', async () => {
     if (httpServer) await fechar(httpServer);
     initDb(':memory:');
     await rm(root, { recursive: true, force: true });
+  }
+});
+
+async function comPainel(
+  deps: Parameters<typeof createPainelApp>[0],
+  usar: (base: string) => Promise<void>,
+): Promise<void> {
+  const root = await mkdtemp(join(tmpdir(), "nfse-moldura-"));
+  const { server, port } = await ouvir(createPainelApp({ panelPort: 0, dbPath: join(root, "emissor.db"), ...deps }));
+  try {
+    await usar(`http://127.0.0.1:${port}`);
+  } finally {
+    await fechar(server);
+    initDb(":memory:");
+    await rm(root, { recursive: true, force: true });
+  }
+}
+
+test("/api/config devolve o aviso de ambiente com o mesmo texto da CLI", async () => {
+  const modoAnterior = process.env["EMITIR_REAL"];
+  try {
+    for (const ambiente of [1, 2] as const) {
+      for (const emitirReal of ["", "1"]) {
+        process.env["EMITIR_REAL"] = emitirReal;
+        await comPainel({ ambiente }, async (base) => {
+          const config = await (await fetch(`${base}/api/config`)).json();
+          assert.equal(config.mensagemAmbiente, mensagemModoReal(ambiente));
+          assert.equal(config.modoSimulacao, emitirReal !== "1");
+        });
+      }
+    }
+  } finally {
+    if (modoAnterior === undefined) delete process.env["EMITIR_REAL"];
+    else process.env["EMITIR_REAL"] = modoAnterior;
+  }
+});
+
+test("ambiente do painel segue a precedencia da CLI sem carregar o .env no processo", async () => {
+  const root = await mkdtemp(join(tmpdir(), "nfse-env-"));
+  const envPath = join(root, ".env");
+  try {
+    writeFileSync(envPath, "NFSE_AMBIENTE=1\nEMITIR_REAL=1\n");
+    const env: NodeJS.ProcessEnv = {};
+    assert.equal(lerAmbiente(env, envPath), 1);
+    assert.deepEqual(env, {}, "ler o aviso nao pode ligar EMITIR_REAL nem mudar o ambiente");
+    assert.equal(lerAmbiente({ NFSE_AMBIENTE: "2" }, envPath), 2, "variavel do shell vence o .env");
+    assert.equal(lerAmbiente({}, join(root, "nao-existe")), 2, "sem configuracao vale o padrao 2");
+    assert.equal(lerAmbiente({ NFSE_AMBIENTE: " " }, envPath), 2);
+    assert.equal(lerAmbiente({ NFSE_AMBIENTE: "3" }, envPath), null);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("painel serve a moldura com as tres secoes para qualquer ?secao=", async () => {
+  await comPainel({}, async (base) => {
+    for (const secao of ["fechamento", "vendas", "emissao-manual"]) {
+      const response = await fetch(`${base}/?secao=${secao}`);
+      assert.equal(response.status, 200);
+      const html = await response.text();
+      for (const link of ["fechamento", "vendas", "emissao-manual"]) {
+        assert.ok(html.includes(`href="?secao=${link}"`), `link ${link}`);
+      }
+    }
+  });
+});
+
+test("createPainelApp aceita outputDir injetado", async () => {
+  const outputDir = await mkdtemp(join(tmpdir(), "nfse-saida-"));
+  try {
+    writeFileSync(join(outputDir, "ndps.json"), JSON.stringify({ proximoNDPS: 42 }));
+    await comPainel({ outputDir }, async (base) => {
+      const defaults = await (await fetch(`${base}/api/defaults`)).json();
+      assert.equal(defaults.nDPS, "42");
+    });
+  } finally {
+    await rm(outputDir, { recursive: true, force: true });
   }
 });
