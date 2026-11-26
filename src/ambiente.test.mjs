@@ -6,7 +6,14 @@ import {
   ambienteFilho,
   mensagemModoReal,
   recusaModoReal,
+  rotuloAmbiente,
 } from './ambiente.mjs';
+
+test('rótulo nomeia o ambiente sem o resto da mensagem', () => {
+  assert.equal(rotuloAmbiente(1), 'PRODUÇÃO (NFSE_AMBIENTE=1)');
+  assert.equal(rotuloAmbiente(2), 'HOMOLOGAÇÃO/PRODUÇÃO RESTRITA (NFSE_AMBIENTE=2)');
+  assert.equal(rotuloAmbiente(3), null);
+});
 
 test('modo sem --real desliga EMITIR_REAL herdado do ambiente', () => {
   assert.deepEqual(ambienteFilho({ EMITIR_REAL: '1', OUTRA: 'preservada' }, false), {

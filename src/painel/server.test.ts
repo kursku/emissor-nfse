@@ -14,7 +14,7 @@ import assert from "node:assert/strict";
 
 import { mascaraDoc, mascararDocumentos } from "../mascara.js";
 import { createPainelApp, lerAmbiente, PAINEL_TOKEN_HEADER } from "./server.js";
-import { mensagemModoReal } from "../ambiente.mjs";
+import { mensagemModoReal, recusaModoReal } from "../ambiente.mjs";
 import { initDb, proximoNDPS, reservarEmissao, upsertVenda } from "../store.js";
 
 test("mascaraDoc mostra so os 3 primeiros e 2 ultimos digitos de um CPF", () => {
@@ -716,7 +716,12 @@ async function comVariaveis(nomes: string[], usar: () => Promise<void>): Promise
   }
 }
 
-type ConfigPainel = { modoSimulacao: boolean; ambiente: 1 | 2 | null; mensagemAmbiente: string };
+type ConfigPainel = {
+  modoSimulacao: boolean;
+  ambiente: 1 | 2 | null;
+  mensagemAmbiente: string;
+  recusaModoReal: string | null;
+};
 
 async function configDoPainel(base: string): Promise<ConfigPainel> {
   return await (await fetch(`${base}/api/config`)).json() as ConfigPainel;
@@ -804,6 +809,22 @@ test("/api/config expoe o ambiente resolvido, ou null quando desconhecido", asyn
   } finally {
     await rm(root, { recursive: true, force: true });
   }
+});
+
+test("/api/config leva a pagina a recusa do modo real na producao restrita", async () => {
+  const casos = [
+    { ambiente: 1, emitirReal: "1", esperado: null },
+    { ambiente: 2, emitirReal: "1", esperado: recusaModoReal(true, 2) },
+    { ambiente: 2, emitirReal: "", esperado: null },
+  ] as const;
+  await comVariaveis(["EMITIR_REAL"], async () => {
+    for (const { ambiente, emitirReal, esperado } of casos) {
+      process.env["EMITIR_REAL"] = emitirReal;
+      await comPainel({ ambiente }, async (base) => {
+        assert.equal((await configDoPainel(base)).recusaModoReal, esperado);
+      });
+    }
+  });
 });
 
 test("lerAmbiente avisa quando o .env existe mas nao pode ser lido", async () => {

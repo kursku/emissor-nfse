@@ -36,7 +36,7 @@ import {
   MENSAGEM_CHAVE_A_VERIFICAR,
 } from '../chave-acesso.js';
 import { ErroAntesDoEnvio, ehErroAntesDoEnvio } from '../emissao-erros.js';
-import { mensagemModoReal, recusaModoReal } from '../ambiente.mjs';
+import { mensagemModoReal, recusaModoReal, rotuloAmbiente } from '../ambiente.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(__dirname, '..', '..');
@@ -200,11 +200,10 @@ export function lerAmbiente(env: NodeJS.ProcessEnv = process.env, envPath = join
 }
 
 function textoFaixa(ambiente: 1 | 2 | null, real: boolean): string {
-  const mensagem = (ambiente && mensagemModoReal(ambiente))
-    || 'Ambiente desconhecido: confira NFSE_AMBIENTE (1 ou 2) no .env.';
-  if (real) return mensagem;
+  const desconhecido = 'Ambiente desconhecido: confira NFSE_AMBIENTE (1 ou 2) no .env.';
+  if (real) return (ambiente && mensagemModoReal(ambiente)) || desconhecido;
   // Em simulação só o nome do ambiente serve de contexto: o resto do texto fala de validade fiscal.
-  const contexto = ambiente ? `Ambiente configurado: ${mensagem.split(':')[0]}.` : mensagem;
+  const contexto = ambiente ? `Ambiente configurado: ${rotuloAmbiente(ambiente)}.` : desconhecido;
   return `SIMULAÇÃO: nenhuma nota será enviada à SEFIN. ${contexto}`;
 }
 
@@ -337,6 +336,7 @@ export function createPainelApp(deps: PainelDependencies = {}) {
       emitirReal: modoRealAtivo(),
       ambiente: ambienteDaFaixa,
       mensagemAmbiente: textoFaixa(ambienteDaFaixa, modoRealAtivo()),
+      recusaModoReal: ambienteDaFaixa && recusaModoReal(modoRealAtivo(), ambienteDaFaixa),
     });
   });
 

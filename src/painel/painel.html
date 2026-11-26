@@ -290,13 +290,15 @@ fetch('/api/config').then(r => {
   if (typeof cfg.modoSimulacao !== 'boolean') throw new Error('config incompleta');
   modoSimulacao = cfg.modoSimulacao;
   document.getElementById('faixa-ambiente').textContent = cfg.mensagemAmbiente;
-  const ambienteConhecido = cfg.ambiente === 1 || cfg.ambiente === 2;
   if (modoSimulacao) {
     document.getElementById('btn-emitir').disabled = true;
     document.getElementById('btn-emitir').title = 'Desabilitado em modo simulacao (EMITIR_REAL nao esta ativo)';
-  } else if (!ambienteConhecido) {
+  } else if (cfg.ambiente !== 1) {
+    // Emissao real so em producao: o servidor recusa o ambiente 2 com 409.
     document.getElementById('btn-emitir').disabled = true;
-    document.getElementById('btn-emitir').title = 'Desabilitado: ambiente desconhecido';
+    document.getElementById('btn-emitir').title = cfg.ambiente === 2
+      ? cfg.recusaModoReal + ' Emissão real exige NFSE_AMBIENTE=1.'
+      : 'Desabilitado: ambiente desconhecido';
   } else {
     document.getElementById('aviso-prod').style.display = 'block';
   }
