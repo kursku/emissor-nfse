@@ -177,17 +177,25 @@ function modoRealAtivo(): boolean {
 // Mesmo valor que `config.ambiente`, sem importar config.ts (derruba o processo sem .env completo)
 // e sem carregar o .env no processo (um EMITIR_REAL=1 no arquivo ligaria o modo real do painel).
 export function lerAmbiente(env: NodeJS.ProcessEnv = process.env, envPath = join(ROOT, '.env')): 1 | 2 | null {
-  let arquivo: NodeJS.Dict<string> = {};
-  try {
-    arquivo = parseEnv(readFileSync(envPath, 'utf8'));
-  } catch (err: unknown) {
-    const codigo = (err as NodeJS.ErrnoException).code;
-    if (codigo !== 'ENOENT') {
-      console.error(`[server] Falha ao ler ${envPath}: ${codigo ?? 'erro sem código'}`);
-      return null;
+  let bruto = env['NFSE_AMBIENTE'];
+  // Como em loadEnvFile, variável no shell (mesmo vazia) dispensa o arquivo.
+  if (bruto === undefined) {
+    try {
+      const arquivo = parseEnv(readFileSync(envPath, 'utf8'));
+      // No Windows process.env ignora caixa, então `nfse_ambiente` no .env também vale em config.ts.
+      const chave = process.platform === 'win32'
+        ? Object.keys(arquivo).find((nome) => nome.toUpperCase() === 'NFSE_AMBIENTE')
+        : 'NFSE_AMBIENTE';
+      bruto = chave === undefined ? undefined : arquivo[chave];
+    } catch (err: unknown) {
+      const codigo = (err as NodeJS.ErrnoException).code;
+      if (codigo !== 'ENOENT') {
+        console.error(`[server] Falha ao ler ${envPath}: ${codigo ?? 'erro sem código'}`);
+        return null;
+      }
     }
   }
-  const valor = Number((env['NFSE_AMBIENTE'] ?? arquivo['NFSE_AMBIENTE'])?.trim() || '2');
+  const valor = Number(bruto?.trim() || '2');
   return valor === 1 || valor === 2 ? valor : null;
 }
 
@@ -327,6 +335,7 @@ export function createPainelApp(deps: PainelDependencies = {}) {
     res.json({
       modoSimulacao: !modoRealAtivo(),
       emitirReal: modoRealAtivo(),
+      ambiente: ambienteDaFaixa,
       mensagemAmbiente: textoFaixa(ambienteDaFaixa, modoRealAtivo()),
     });
   });

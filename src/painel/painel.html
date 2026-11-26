@@ -11,7 +11,7 @@
   /* Moldura: faixa de ambiente fixa, menu lateral e conteudo com rolagem propria */
   .faixa-ambiente { background: #fff3cd; border-bottom: 2px solid #e67e22; color: #7c2d12; padding: .55rem 1rem; font-weight: 700; text-align: center; font-size: .95rem; }
   .casca { flex: 1; min-height: 0; display: flex; }
-  nav { flex: 0 0 208px; background: #171a2b; color: #fff; padding: 1.2rem .75rem; display: flex; flex-direction: column; gap: .25rem; overflow-y: auto; }
+  nav { box-sizing: border-box; flex: 0 0 208px;background: #171a2b; color: #fff; padding: 1.2rem .75rem; display: flex; flex-direction: column; gap: .25rem; overflow-y: auto; }
   nav a { color: #c5c8dc; text-decoration: none; padding: .6rem .75rem; border-radius: 6px; font-size: .95rem; }
   nav a:hover { background: #262a42; color: #fff; }
   nav a[aria-current] { background: #4338ca; color: #fff; font-weight: 600; }
@@ -46,6 +46,9 @@
   th { background: #f1f5f9; padding: .4rem .6rem; text-align: left; border-bottom: 2px solid #d0d4dc; font-size: .78rem; text-transform: uppercase; color: #555; letter-spacing: .04em; }
   td { padding: .4rem .6rem; border-bottom: 1px solid #e8eaf0; vertical-align: top; }
   tr:hover td { background: #f8f9fc; }
+  /* So a tabela rola na horizontal; produto, nome e erro podem quebrar no meio da palavra */
+  #tabela-container { overflow-x: auto; }
+  #tabela-body td:nth-child(2), #tabela-body td:nth-child(3), #tabela-body td:nth-child(7) { overflow-wrap: anywhere; }
   .badge { display: inline-block; padding: .15rem .5rem; border-radius: 9999px; font-size: .75rem; font-weight: 600; }
   .s-simulada { background: #e0f2fe; color: #0369a1; }
   .s-pronta { background: #dcfce7; color: #166534; }
@@ -280,16 +283,26 @@ mostrarSecao();
 // --- Config ---
 let modoSimulacao = true;
 const painelToken = document.querySelector('meta[name="painel-token"]')?.content || '';
-fetch('/api/config').then(r => r.json()).then(cfg => {
+fetch('/api/config').then(r => {
+  if (!r.ok) throw new Error('config ' + r.status);
+  return r.json();
+}).then(cfg => {
+  if (typeof cfg.modoSimulacao !== 'boolean') throw new Error('config incompleta');
   modoSimulacao = cfg.modoSimulacao;
   document.getElementById('faixa-ambiente').textContent = cfg.mensagemAmbiente;
+  const ambienteConhecido = cfg.ambiente === 1 || cfg.ambiente === 2;
   if (modoSimulacao) {
     document.getElementById('btn-emitir').disabled = true;
     document.getElementById('btn-emitir').title = 'Desabilitado em modo simulacao (EMITIR_REAL nao esta ativo)';
+  } else if (!ambienteConhecido) {
+    document.getElementById('btn-emitir').disabled = true;
+    document.getElementById('btn-emitir').title = 'Desabilitado: ambiente desconhecido';
   } else {
     document.getElementById('aviso-prod').style.display = 'block';
   }
 }).catch(() => {
+  modoSimulacao = true;
+  document.getElementById('btn-emitir').disabled = true;
   document.getElementById('faixa-ambiente').textContent =
     'Não foi possível ler o ambiente. Recarregue a página antes de emitir.';
 });

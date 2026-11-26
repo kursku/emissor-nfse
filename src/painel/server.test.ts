@@ -716,8 +716,10 @@ async function comVariaveis(nomes: string[], usar: () => Promise<void>): Promise
   }
 }
 
-async function configDoPainel(base: string): Promise<{ modoSimulacao: boolean; mensagemAmbiente: string }> {
-  return await (await fetch(`${base}/api/config`)).json() as { modoSimulacao: boolean; mensagemAmbiente: string };
+type ConfigPainel = { modoSimulacao: boolean; ambiente: 1 | 2 | null; mensagemAmbiente: string };
+
+async function configDoPainel(base: string): Promise<ConfigPainel> {
+  return await (await fetch(`${base}/api/config`)).json() as ConfigPainel;
 }
 
 test("/api/config lidera com a simulacao e usa o texto da CLI no modo real", async () => {
@@ -757,6 +759,47 @@ test("/api/config le o .env uma vez, na criacao do painel", async () => {
       await comPainel({ envPath }, async (base) => {
         assert.match((await configDoPainel(base)).mensagemAmbiente, /Ambiente desconhecido/);
       });
+    });
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("variavel do shell vale mesmo com .env ilegivel", async () => {
+  const root = await mkdtemp(join(tmpdir(), "nfse-env-"));
+  try {
+    assert.equal(lerAmbiente({ NFSE_AMBIENTE: "1" }, root), 1);
+    assert.equal(lerAmbiente({ NFSE_AMBIENTE: "" }, root), 2);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("no Windows a chave do .env ignora caixa, como process.loadEnvFile", { skip: process.platform !== "win32" }, async () => {
+  const root = await mkdtemp(join(tmpdir(), "nfse-env-"));
+  const envPath = join(root, ".env");
+  try {
+    writeFileSync(envPath, "nfse_ambiente=1\n");
+    assert.equal(lerAmbiente({}, envPath), 1);
+    writeFileSync(envPath, "nfse_ambiente=2\nNfse_Ambiente=1\n");
+    assert.equal(lerAmbiente({}, envPath), 1, "com chaves repetidas vale a mesma que loadEnvFile aplica");
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("/api/config expoe o ambiente resolvido, ou null quando desconhecido", async () => {
+  const root = await mkdtemp(join(tmpdir(), "nfse-env-"));
+  const envPath = join(root, ".env");
+  try {
+    await comVariaveis(["EMITIR_REAL", "NFSE_AMBIENTE"], async () => {
+      process.env["EMITIR_REAL"] = "1";
+      for (const [arquivo, esperado] of [["1", 1], ["2", 2], ["3", null]] as const) {
+        writeFileSync(envPath, `NFSE_AMBIENTE=${arquivo}\n`);
+        await comPainel({ envPath }, async (base) => {
+          assert.equal((await configDoPainel(base)).ambiente, esperado);
+        });
+      }
     });
   } finally {
     await rm(root, { recursive: true, force: true });
