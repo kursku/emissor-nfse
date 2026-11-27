@@ -14,7 +14,6 @@ import assert from "node:assert/strict";
 
 import { mascaraDoc, mascararDocumentos } from "../mascara.js";
 import { createPainelApp, lerAmbiente, PAINEL_TOKEN_HEADER } from "./server.js";
-import { mensagemModoReal, recusaModoReal } from "../ambiente.mjs";
 import { initDb, proximoNDPS, reservarEmissao, upsertVenda } from "../store.js";
 
 test("mascaraDoc mostra so os 3 primeiros e 2 ultimos digitos de um CPF", () => {
@@ -727,23 +726,59 @@ async function configDoPainel(base: string): Promise<ConfigPainel> {
   return await (await fetch(`${base}/api/config`)).json() as ConfigPainel;
 }
 
-test("/api/config lidera com a simulacao e usa o texto da CLI no modo real", async () => {
-  const simulacao = "SIMULAÇÃO: nenhuma nota será enviada à SEFIN. Ambiente configurado: ";
+test("/api/config lidera com a simulacao, mostra o ambiente e a recusa do modo real", async () => {
+  // Literais de proposito: usar os helpers da rota esconderia uma mudanca errada neles.
   const casos = [
-    { ambiente: 1, emitirReal: "", esperado: `${simulacao}PRODUÇÃO (NFSE_AMBIENTE=1).` },
-    { ambiente: 2, emitirReal: "", esperado: `${simulacao}HOMOLOGAÇÃO/PRODUÇÃO RESTRITA (NFSE_AMBIENTE=2).` },
-    { ambiente: 1, emitirReal: "1", esperado: mensagemModoReal(1) },
-    { ambiente: 2, emitirReal: "1", esperado: mensagemModoReal(2) },
-  ] as const;
-  await comVariaveis(["EMITIR_REAL"], async () => {
-    for (const { ambiente, emitirReal, esperado } of casos) {
+    {
+      configurado: "1", emitirReal: "", ambiente: 1, modoSimulacao: true,
+      mensagemAmbiente: "SIMULAÇÃO: nenhuma nota será enviada à SEFIN. Ambiente configurado: PRODUÇÃO (NFSE_AMBIENTE=1).",
+      recusaModoReal: null,
+    },
+    {
+      configurado: "2", emitirReal: "", ambiente: 2, modoSimulacao: true,
+      mensagemAmbiente: "SIMULAÇÃO: nenhuma nota será enviada à SEFIN. Ambiente configurado: HOMOLOGAÇÃO/PRODUÇÃO RESTRITA (NFSE_AMBIENTE=2).",
+      recusaModoReal: null,
+    },
+    {
+      // "0" é o que `nfse painel` sem --real define.
+      configurado: "2", emitirReal: "0", ambiente: 2, modoSimulacao: true,
+      mensagemAmbiente: "SIMULAÇÃO: nenhuma nota será enviada à SEFIN. Ambiente configurado: HOMOLOGAÇÃO/PRODUÇÃO RESTRITA (NFSE_AMBIENTE=2).",
+      recusaModoReal: null,
+    },
+    {
+      configurado: "1", emitirReal: "1", ambiente: 1, modoSimulacao: false,
+      mensagemAmbiente: "PRODUÇÃO (NFSE_AMBIENTE=1): nota com validade fiscal.",
+      recusaModoReal: null,
+    },
+    {
+      configurado: "2", emitirReal: "1", ambiente: 2, modoSimulacao: false,
+      mensagemAmbiente: "HOMOLOGAÇÃO/PRODUÇÃO RESTRITA (NFSE_AMBIENTE=2): sem validade fiscal; para produção configure NFSE_AMBIENTE=1.",
+      recusaModoReal: "MODO REAL recusado: NFSE_AMBIENTE=2 é produção restrita e não gera nota fiscal real.",
+    },
+    {
+      configurado: "3", emitirReal: "", ambiente: null, modoSimulacao: true,
+      mensagemAmbiente: "SIMULAÇÃO: nenhuma nota será enviada à SEFIN. Ambiente desconhecido: confira NFSE_AMBIENTE (1 ou 2) no .env.",
+      recusaModoReal: null,
+    },
+    {
+      configurado: "3", emitirReal: "1", ambiente: null, modoSimulacao: false,
+      mensagemAmbiente: "Ambiente desconhecido: confira NFSE_AMBIENTE (1 ou 2) no .env.",
+      recusaModoReal: null,
+    },
+  ];
+  await comVariaveis(["EMITIR_REAL", "NFSE_AMBIENTE"], async () => {
+    for (const { configurado, emitirReal, ...esperado } of casos) {
+      process.env["NFSE_AMBIENTE"] = configurado;
       process.env["EMITIR_REAL"] = emitirReal;
-      await comPainel({ ambiente }, async (base) => {
-        const config = await configDoPainel(base);
-        assert.equal(config.mensagemAmbiente, esperado);
-        assert.equal(config.modoSimulacao, emitirReal !== "1");
+      await comPainel({}, async (base) => {
+        const { ambiente, modoSimulacao, mensagemAmbiente, recusaModoReal } = await configDoPainel(base);
+        assert.deepEqual({ ambiente, modoSimulacao, mensagemAmbiente, recusaModoReal }, esperado);
       });
     }
+    process.env["NFSE_AMBIENTE"] = "2";
+    await comPainel({ ambiente: 1 }, async (base) => {
+      assert.equal((await configDoPainel(base)).ambiente, 1, "deps.ambiente vence o shell");
+    });
   });
 });
 
@@ -809,22 +844,6 @@ test("/api/config expoe o ambiente resolvido, ou null quando desconhecido", asyn
   } finally {
     await rm(root, { recursive: true, force: true });
   }
-});
-
-test("/api/config leva a pagina a recusa do modo real na producao restrita", async () => {
-  const casos = [
-    { ambiente: 1, emitirReal: "1", esperado: null },
-    { ambiente: 2, emitirReal: "1", esperado: recusaModoReal(true, 2) },
-    { ambiente: 2, emitirReal: "", esperado: null },
-  ] as const;
-  await comVariaveis(["EMITIR_REAL"], async () => {
-    for (const { ambiente, emitirReal, esperado } of casos) {
-      process.env["EMITIR_REAL"] = emitirReal;
-      await comPainel({ ambiente }, async (base) => {
-        assert.equal((await configDoPainel(base)).recusaModoReal, esperado);
-      });
-    }
-  });
 });
 
 test("lerAmbiente avisa quando o .env existe mas nao pode ser lido", async () => {
