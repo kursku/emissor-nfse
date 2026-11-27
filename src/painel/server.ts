@@ -4,6 +4,7 @@
  */
 
 import express from 'express';
+import type { Server } from 'node:http';
 import { lstatSync, readFileSync, realpathSync, existsSync } from 'node:fs';
 import { randomBytes } from 'node:crypto';
 import { join, dirname, isAbsolute, relative, resolve, sep } from 'node:path';
@@ -734,12 +735,131 @@ app.post('/api/emitir', async (req, res) => {
 
 export const app = createPainelApp();
 
+// 8 s deixa margem para encerrar antes de um SIGKILL típico de 10 s (ex.: supervisores/containers).
+export const SHUTDOWN_TIMEOUT_MS = 8_000;
+
+export interface SignalTarget {
+  on(event: NodeJS.Signals, listener: (signal: NodeJS.Signals) => void): unknown;
+  off(event: NodeJS.Signals, listener: (signal: NodeJS.Signals) => void): unknown;
+}
+
+export interface IniciarPainelOptions {
+  port?: number;
+  shutdownTimeoutMs?: number;
+  onExit?: (code: number) => void;
+  onLog?: (message: string) => void;
+  onError?: (message: string) => void;
+  signalTarget?: SignalTarget;
+}
+
+/**
+ * Sobe o servidor HTTP do painel em loopback (`127.0.0.1`), trata erros de
+ * bind do Express 5 e registra encerramento limpo para `SIGTERM` e `SIGINT`
+ * com prazo máximo para requisições HTTP em andamento.
+ *
+ * @param painelApp Instância Express criada por {@link createPainelApp}.
+ * @param options Porta, prazo de encerramento e callbacks opcionais (úteis em testes).
+ * @returns Servidor HTTP criado pelo Express.
+ */
+export function iniciarPainel(
+  painelApp: ReturnType<typeof createPainelApp>,
+  options: IniciarPainelOptions = {},
+): Server {
+  const port = options.port ?? PORT;
+  const shutdownTimeoutMs = options.shutdownTimeoutMs ?? SHUTDOWN_TIMEOUT_MS;
+  const onExit = options.onExit ?? ((code: number) => process.exit(code));
+  const onLog = options.onLog ?? ((message: string) => console.log(message));
+  const onError = options.onError ?? ((message: string) => console.error(message));
+  const signalTarget = options.signalTarget ?? process;
+
+  let encerrando = false;
+  let finalizado = false;
+  let sinaisRegistrados = false;
+
+  /**
+   * Remove os listeners de `SIGTERM` e `SIGINT` registrados para este servidor.
+   */
+  const removerSinais = (): void => {
+    if (!sinaisRegistrados) return;
+    sinaisRegistrados = false;
+    signalTarget.off('SIGTERM', encerrar);
+    signalTarget.off('SIGINT', encerrar);
+  };
+
+  /**
+   * Encerra o servidor HTTP ao receber `SIGTERM` ou `SIGINT`, aguardando
+   * requisições em andamento até o prazo configurado antes de forçar a saída.
+   *
+   * @param sinal Sinal recebido do sistema operacional.
+   */
+  const encerrar = (sinal: NodeJS.Signals): void => {
+    if (encerrando) return;
+    encerrando = true;
+
+    onLog(`[server] ${sinal} recebido; encerrando painel...`);
+
+    const timer = setTimeout(() => {
+      if (finalizado) return;
+      finalizado = true;
+      removerSinais();
+      onError(`[server] Encerramento excedeu ${shutdownTimeoutMs}ms; forçando saída.`);
+      server.closeAllConnections();
+      onExit(1);
+    }, shutdownTimeoutMs);
+    timer.unref();
+
+    server.close((err) => {
+      if (finalizado) return;
+      finalizado = true;
+      clearTimeout(timer);
+      if (err) {
+        onError(`[server] Erro ao encerrar painel: ${err.message}`);
+        onExit(1);
+        return;
+      }
+      onLog('[server] Painel encerrado.');
+      onExit(0);
+    });
+    server.closeIdleConnections();
+  };
+
+  const server = painelApp.listen(port, '127.0.0.1', (err) => {
+    if (err) {
+      onError(`[server] Falha ao iniciar painel em 127.0.0.1:${port}: ${err.message}`);
+      onExit(1);
+      return;
+    }
+
+    sinaisRegistrados = true;
+    signalTarget.on('SIGTERM', encerrar);
+    signalTarget.on('SIGINT', encerrar);
+    server.once('close', removerSinais);
+
+    const address = server.address();
+    const portaAtiva = address && typeof address !== 'string' ? address.port : port;
+    onLog('Painel NFS-e (PRODUCAO REAL): http://localhost:' + portaAtiva);
+  });
+
+  server.on('request', (_req, res) => {
+    if (encerrando && !res.headersSent) {
+      res.setHeader('Connection', 'close');
+    }
+    res.once('finish', () => {
+      if (encerrando && !finalizado) {
+        setImmediate(() => {
+          if (!finalizado) server.closeIdleConnections();
+        });
+      }
+    });
+  });
+
+  return server;
+}
+
 // Só sobe o listener quando executado diretamente (npx tsx src/painel/server.ts) —
 // importar o módulo em teste (para mascaraDoc) não deve abrir a porta 3000.
 const isMain = process.argv[1] === fileURLToPath(import.meta.url);
 if (isMain) {
   initDb(DB_PATH);
-  app.listen(PORT, '127.0.0.1', () => {
-    console.log('Painel NFS-e (PRODUCAO REAL): http://localhost:' + PORT);
-  });
+  iniciarPainel(app);
 }

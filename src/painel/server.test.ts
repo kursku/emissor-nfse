@@ -3,6 +3,7 @@
  * CPF/CNPJ nas respostas do painel (/api/vendas nunca devolve o documento
  * completo). Testado via mascara.ts diretamente para manter este teste puro.
  */
+import { EventEmitter } from "node:events";
 import { createServer, request as httpRequest, type Server } from "node:http";
 import { spawnSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
@@ -13,7 +14,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 
 import { mascaraDoc, mascararDocumentos } from "../mascara.js";
-import { createPainelApp, lerAmbiente, PAINEL_TOKEN_HEADER } from "./server.js";
+import { createPainelApp, iniciarPainel, lerAmbiente, PAINEL_TOKEN_HEADER } from "./server.js";
 import { initDb, proximoNDPS, reservarEmissao, upsertVenda } from "../store.js";
 
 test("mascaraDoc mostra so os 3 primeiros e 2 ultimos digitos de um CPF", () => {
@@ -907,4 +908,144 @@ test("createPainelApp aceita outputDir injetado", async () => {
   } finally {
     await rm(outputDir, { recursive: true, force: true });
   }
+});
+
+test("iniciarPainel registra erro e sai com codigo 1 quando a porta esta ocupada", async () => {
+  const ocupado = createServer();
+  await new Promise<void>((resolve, reject) => {
+    ocupado.once("error", reject);
+    ocupado.listen(0, "127.0.0.1", resolve);
+  });
+  const address = ocupado.address();
+  if (!address || typeof address === "string") throw new Error("servidor ocupado sem porta TCP");
+
+  const sinais = new EventEmitter();
+  const logs: string[] = [];
+  const erros: string[] = [];
+  let resolverSaida: ((code: number) => void) | undefined;
+  const saida = new Promise<number>((resolve) => { resolverSaida = resolve; });
+
+  try {
+    iniciarPainel(createPainelApp({ panelPort: 0 }), {
+      port: address.port,
+      signalTarget: sinais,
+      onLog: (msg) => logs.push(msg),
+      onError: (msg) => erros.push(msg),
+      onExit: (code) => resolverSaida?.(code),
+    });
+
+    const codigo = await saida;
+    assert.equal(codigo, 1);
+    assert.deepEqual(logs, [], "nao deve imprimir banner quando o bind falha");
+    assert.match(erros.join("\n"), new RegExp(`Falha ao iniciar painel em 127\\.0\\.0\\.1:${address.port}`));
+    assert.equal(sinais.listenerCount("SIGTERM"), 0);
+    assert.equal(sinais.listenerCount("SIGINT"), 0);
+  } finally {
+    await fechar(ocupado);
+  }
+});
+
+test("iniciarPainel conclui requisicao em andamento ao receber SIGTERM e sai com codigo 0", async () => {
+  const app = createPainelApp({ panelPort: 0 });
+  let liberarResposta: (() => void) | undefined;
+  let sinalizarRecebida: (() => void) | undefined;
+  const requisicaoEmVoo = new Promise<void>((resolve) => { sinalizarRecebida = resolve; });
+  app.get("/api/teste-shutdown", (_req, res) => {
+    sinalizarRecebida?.();
+    liberarResposta = () => res.status(200).json({ ok: true });
+  });
+
+  const sinais = new EventEmitter();
+  const logs: string[] = [];
+  const erros: string[] = [];
+  const saidas: number[] = [];
+  let resolverSaida: ((code: number) => void) | undefined;
+  const saida = new Promise<number>((resolve) => { resolverSaida = resolve; });
+
+  const server = iniciarPainel(app, {
+    port: 0,
+    shutdownTimeoutMs: 2_000,
+    signalTarget: sinais,
+    onLog: (msg) => logs.push(msg),
+    onError: (msg) => erros.push(msg),
+    onExit: (code) => {
+      saidas.push(code);
+      resolverSaida?.(code);
+    },
+  });
+
+  await new Promise<void>((resolve) => server.once("listening", resolve));
+  const address = server.address();
+  if (!address || typeof address === "string") throw new Error("servidor sem porta TCP");
+
+  const respostaPromise = pedir(address.port, "/api/teste-shutdown");
+  await requisicaoEmVoo;
+
+  // Emite dois sinais seguidos para garantir idempotencia no encerramento e que
+  // os listeners continuam ativos durante a drenagem (impedindo aborto por 2o sinal).
+  sinais.emit("SIGTERM", "SIGTERM");
+  assert.equal(sinais.listenerCount("SIGTERM"), 1);
+  assert.equal(sinais.listenerCount("SIGINT"), 1);
+  sinais.emit("SIGINT", "SIGINT");
+
+  // Enquanto a requisicao estiver aberta, o servidor aguarda concluir.
+  assert.deepEqual(saidas, []);
+
+  liberarResposta?.();
+  const resposta = await respostaPromise;
+  const codigo = await saida;
+
+  assert.equal(resposta.status, 200);
+  assert.deepEqual(saidas, [0]);
+  assert.equal(codigo, 0);
+  assert.deepEqual(erros, []);
+  assert.match(logs.join("\n"), new RegExp(`http://localhost:${address.port}`));
+  assert.match(logs.join("\n"), /SIGTERM recebido; encerrando painel/);
+  assert.match(logs.join("\n"), /Painel encerrado/);
+  assert.equal(sinais.listenerCount("SIGTERM"), 0);
+  assert.equal(sinais.listenerCount("SIGINT"), 0);
+});
+
+test("iniciarPainel forca saida com codigo 1 quando o encerramento excede o prazo", async () => {
+  const app = createPainelApp({ panelPort: 0 });
+  let sinalizarRecebida: (() => void) | undefined;
+  const requisicaoTravada = new Promise<void>((resolve) => { sinalizarRecebida = resolve; });
+  app.get("/api/teste-travado", (_req, _res) => {
+    sinalizarRecebida?.();
+  });
+
+  const sinais = new EventEmitter();
+  const erros: string[] = [];
+  const saidas: number[] = [];
+  let resolverSaida: ((code: number) => void) | undefined;
+  const saida = new Promise<number>((resolve) => { resolverSaida = resolve; });
+
+  const server = iniciarPainel(app, {
+    port: 0,
+    shutdownTimeoutMs: 80,
+    signalTarget: sinais,
+    onLog: () => { },
+    onError: (msg) => erros.push(msg),
+    onExit: (code) => {
+      saidas.push(code);
+      resolverSaida?.(code);
+    },
+  });
+
+  await new Promise<void>((resolve) => server.once("listening", resolve));
+  const address = server.address();
+  if (!address || typeof address === "string") throw new Error("servidor sem porta TCP");
+
+  const erroCliente = pedir(address.port, "/api/teste-travado").catch((err: unknown) => err);
+  await requisicaoTravada;
+
+  sinais.emit("SIGTERM", "SIGTERM");
+  const codigo = await saida;
+  await erroCliente;
+
+  assert.equal(codigo, 1);
+  assert.deepEqual(saidas, [1]);
+  assert.match(erros.join("\n"), /Encerramento excedeu 80ms; forçando saída/);
+  assert.equal(sinais.listenerCount("SIGTERM"), 0);
+  assert.equal(sinais.listenerCount("SIGINT"), 0);
 });
