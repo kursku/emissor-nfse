@@ -22,6 +22,23 @@
   :focus-visible { outline: 3px solid #2563eb; outline-offset: 2px; }
   nav :focus-visible { outline-color: #fbbf24; }
   button, select { min-height: 24px; min-width: 24px; }
+  /* Fechamento */
+  .fech-topo { display: flex; justify-content: space-between; align-items: center; gap: .8rem; flex-wrap: wrap; border-bottom: 1px solid #d0d4dc; padding-bottom: .5rem; }
+  .fech-topo h2 { border: 0; margin: 0; padding: 0; }
+  .fech-mes { display: flex; gap: .4rem; align-items: center; }
+  .fech-mes[hidden] { display: none; }
+  .fech-mes button, .fech-mes select { padding: .35rem .7rem; border: 1px solid #c6cad2; border-radius: 5px; background: #fff; font-size: .95rem; cursor: pointer; }
+  .fech-mes button:disabled { color: #aaa; background: #f1f5f9; cursor: default; }
+  .fech-mes select { min-width: 190px; font-weight: 600; }
+  .fech-total { font-size: 2.4rem; font-weight: 700; margin-top: 1rem; font-variant-numeric: tabular-nums; }
+  .fech-quantidade { color: #555; margin-bottom: 1rem; }
+  .fech-tabela { overflow-x: auto; }
+  .razao { font-variant-numeric: tabular-nums; }
+  .razao .valor { text-align: right; white-space: nowrap; }
+  .razao td:nth-child(3) { overflow-wrap: anywhere; }
+  .razao tfoot th, .razao tfoot td { background: #f1f5f9; border-top: 2px solid #1a1a2e; border-bottom: 0; font-size: .9rem; font-weight: 700; color: #1a1a2e; }
+  .estimada { display: inline-block; white-space: nowrap; margin-top: .2rem; padding: .15rem .5rem; border-radius: 4px; background: #fef3c7; color: #78350f; font-size: .72rem; font-weight: 600; }
+  .fech-rodape { margin: .8rem 0 0; font-size: .78rem; color: #555; }
   /* Contadores */
   .contadores { display: flex; flex-wrap: wrap; gap: .6rem; margin-bottom: 1rem; }
   .contador { border-radius: 8px; padding: .5rem .9rem; min-width: 90px; text-align: center; border: 1px solid transparent; }
@@ -108,8 +125,30 @@
 <div id="aviso-prod" class="aviso" style="display:none">Aliquota vigente: ISS 5% (desde 2026-05-20). Competencia = data de hoje.</div>
 
 <section class="painel-secao" data-secao="fechamento" aria-label="Fechamento" hidden>
-  <h2>Fechamento</h2>
-  <p class="vazio">Em breve: Notas por competência.</p>
+  <div class="fech-topo">
+    <h2>Fechamento</h2>
+    <div class="fech-mes" id="fech-mes" hidden>
+      <button type="button" id="fech-anterior" aria-label="Competência anterior" title="Competência anterior ( [ )">&lsaquo;</button>
+      <select id="fech-competencia" aria-label="Competência"></select>
+      <button type="button" id="fech-proxima" aria-label="Próxima competência" title="Próxima competência ( ] )">&rsaquo;</button>
+    </div>
+  </div>
+  <p class="vazio" id="fech-aviso" role="status">Carregando...</p>
+  <div id="fech-conteudo" hidden>
+    <div class="fech-total" id="fech-total"></div>
+    <div class="fech-quantidade" id="fech-quantidade"></div>
+    <p class="aviso" id="fech-alerta" role="status" hidden></p>
+    <div class="fech-tabela">
+      <table class="razao">
+        <thead>
+          <tr><th class="valor">Nº</th><th>Emissão</th><th>Tomador</th><th>CPF/CNPJ</th><th class="valor">Valor</th></tr>
+        </thead>
+        <tbody id="fech-notas"></tbody>
+        <tfoot><tr><th colspan="4">Total da competência</th><td class="valor" id="fech-total-rodape"></td></tr></tfoot>
+      </table>
+    </div>
+    <p class="fech-rodape">Total das Notas autorizadas registradas no banco. Cancelamentos e substituições não são refletidos.</p>
+  </div>
 </section>
 
 <!-- SECAO: VENDAS -->
@@ -268,15 +307,176 @@ function mostrarSecao() {
     else a.removeAttribute('aria-current');
   });
   document.querySelectorAll('section[data-secao]').forEach(s => { s.hidden = s.dataset.secao !== atual; });
+  if (atual === 'fechamento') carregarFechamento();
 }
 document.querySelectorAll('nav a[data-secao]').forEach(a => {
   a.addEventListener('click', e => {
     if (e.ctrlKey || e.metaKey || e.shiftKey || e.altKey) return;
     e.preventDefault();
-    if (a.getAttribute('aria-current') !== 'page') history.pushState(null, '', a.getAttribute('href'));
+    if (a.getAttribute('aria-current') !== 'page') {
+      // A competência escolhida acompanha a navegação entre seções.
+      const competencia = competenciaDaUrl();
+      history.pushState(null, '', a.getAttribute('href') + (competencia ? '&competencia=' + competencia : ''));
+    }
     mostrarSecao();
   });
 });
+
+// --- Fechamento (a competência mora na URL: ?competencia=AAAA-MM) ---
+const brl = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' });
+let competencias = [];
+let pedidoFechamento = 0;
+
+function competenciaDaUrl() {
+  const valor = new URLSearchParams(location.search).get('competencia') || '';
+  return /^\d{4}-(0[1-9]|1[0-2])$/.test(valor) ? valor : '';
+}
+
+function urlDaCompetencia(competencia) {
+  const url = new URL(location.href);
+  url.searchParams.set('competencia', competencia);
+  return url;
+}
+
+function nomeDaCompetencia(competencia) {
+  const nome = new Date(competencia + '-15T12:00:00Z')
+    .toLocaleDateString('pt-BR', { month: 'long', year: 'numeric', timeZone: 'UTC' });
+  return nome.charAt(0).toUpperCase() + nome.slice(1);
+}
+
+function dataDeEmissao(emitidaEm) {
+  if (!emitidaEm) return '—';
+  if (/^\d{4}-\d{2}-\d{2}$/.test(emitidaEm)) return emitidaEm.split('-').reverse().join('/');
+  const instante = new Date(emitidaEm);
+  return isNaN(instante) ? '—' : instante.toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' });
+}
+
+function irParaCompetencia(competencia) {
+  if (!competencia || competencia === competenciaDaUrl()) return;
+  history.pushState(null, '', urlDaCompetencia(competencia));
+  carregarFechamento();
+}
+
+// A lista vem da mais recente para a mais antiga.
+function vizinhas(competencia) {
+  return {
+    anterior: competencias.find(c => c.competencia < competencia)?.competencia,
+    proxima: competencias.findLast(c => c.competencia > competencia)?.competencia,
+  };
+}
+
+function avisoFechamento(texto) {
+  const aviso = document.getElementById('fech-aviso');
+  aviso.textContent = texto;
+  aviso.hidden = !texto;
+}
+
+async function buscarJson(url) {
+  const resposta = await fetch(url);
+  if (!resposta.ok) throw new Error(url + ' ' + resposta.status);
+  return resposta.json();
+}
+
+function celula(texto, classe) {
+  const td = document.createElement('td');
+  td.textContent = texto;
+  if (classe) td.className = classe;
+  return td;
+}
+
+function linhaDaNota(nota) {
+  const tr = document.createElement('tr');
+  tr.dataset.chave = nota.chave;
+  const emissao = celula(dataDeEmissao(nota.emitidaEm));
+  if (nota.competenciaEstimada) {
+    const selo = document.createElement('span');
+    selo.className = 'estimada';
+    selo.textContent = 'competência estimada';
+    selo.title = 'Sem XML autorizado legível: mês da data de emissão e dados da Venda';
+    emissao.append(document.createElement('br'), selo);
+  }
+  tr.append(
+    celula(nota.nNFSe || '—', 'valor'),
+    emissao,
+    celula(nota.tomador || '—'),
+    celula(nota.documentoMascarado || '—'),
+    celula(nota.valor == null ? '—' : brl.format(nota.valor), 'valor'),
+  );
+  return tr;
+}
+
+// O total é conferido contra a guia: o que o enfraquece precisa estar ao lado dele.
+function alertaDoTotal(notas) {
+  const contar = n => n + (n === 1 ? ' Nota' : ' Notas');
+  const estimadas = notas.filter(n => n.competenciaEstimada).length;
+  const semValor = notas.filter(n => n.valor == null).length;
+  const partes = [];
+  if (semValor) partes.push(contar(semValor) + ' sem valor, fora do total');
+  if (estimadas) partes.push(contar(estimadas) + ' sem XML legível, com mês e valor vindos do banco (confira NFSE_OUTPUT_DIR e o terminal do painel)');
+  return partes.length ? 'Atenção: ' + partes.join('; ') + '.' : '';
+}
+
+async function carregarFechamento() {
+  const pedido = ++pedidoFechamento;
+  // Número de outro mês não pode ficar na tela enquanto o novo carrega.
+  document.getElementById('fech-conteudo').hidden = true;
+  avisoFechamento('Carregando...');
+  try {
+    const lista = await buscarJson('/api/notas/competencias');
+    if (pedido !== pedidoFechamento) return;
+    competencias = lista;
+    const atual = competenciaDaUrl() || lista[0]?.competencia;
+    document.getElementById('fech-mes').hidden = !atual;
+    if (!atual) {
+      avisoFechamento('Nenhuma Nota registrada ainda.');
+      return;
+    }
+    if (competenciaDaUrl() !== atual) history.replaceState(null, '', urlDaCompetencia(atual));
+
+    const meses = lista.map(c => c.competencia);
+    if (!meses.includes(atual)) meses.push(atual);
+    const seletor = document.getElementById('fech-competencia');
+    seletor.replaceChildren(...meses.sort().reverse().map(c => new Option(nomeDaCompetencia(c), c)));
+    seletor.value = atual;
+    const { anterior, proxima } = vizinhas(atual);
+    document.getElementById('fech-anterior').disabled = !anterior;
+    document.getElementById('fech-proxima').disabled = !proxima;
+
+    const mes = await buscarJson('/api/notas?competencia=' + atual);
+    if (pedido !== pedidoFechamento) return;
+    if (mes.quantidade === 0) {
+      avisoFechamento('Nenhuma Nota nesta competência.');
+      return;
+    }
+    document.getElementById('fech-total').textContent = brl.format(mes.total);
+    document.getElementById('fech-total-rodape').textContent = brl.format(mes.total);
+    document.getElementById('fech-quantidade').textContent =
+      mes.quantidade + (mes.quantidade === 1 ? ' Nota na competência' : ' Notas na competência');
+    const alerta = document.getElementById('fech-alerta');
+    alerta.textContent = alertaDoTotal(mes.notas);
+    alerta.hidden = !alerta.textContent;
+    document.getElementById('fech-notas').replaceChildren(...mes.notas.map(linhaDaNota));
+    document.getElementById('fech-conteudo').hidden = false;
+    avisoFechamento('');
+  } catch (erro) {
+    console.error(erro);
+    if (pedido === pedidoFechamento) avisoFechamento('Não foi possível ler as Notas. Recarregue a página e confira o terminal do painel.');
+  }
+}
+
+document.getElementById('fech-competencia').addEventListener('change', e => irParaCompetencia(e.target.value));
+document.getElementById('fech-anterior').addEventListener('click', () => irParaCompetencia(vizinhas(competenciaDaUrl()).anterior));
+document.getElementById('fech-proxima').addEventListener('click', () => irParaCompetencia(vizinhas(competenciaDaUrl()).proxima));
+document.addEventListener('keydown', e => {
+  if (e.key !== '[' && e.key !== ']') return;
+  // Em alguns teclados os colchetes saem com AltGr, que o Windows reporta como Ctrl+Alt.
+  if ((e.ctrlKey || e.altKey || e.metaKey) && !e.getModifierState('AltGraph')) return;
+  if (e.target.closest?.('input, textarea, [contenteditable]')) return;
+  if (document.querySelector('section[data-secao="fechamento"]').hidden) return;
+  const { anterior, proxima } = vizinhas(competenciaDaUrl());
+  irParaCompetencia(e.key === '[' ? anterior : proxima);
+});
+
 window.addEventListener('popstate', mostrarSecao);
 mostrarSecao();
 

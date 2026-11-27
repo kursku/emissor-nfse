@@ -51,7 +51,7 @@ function exigirPdf(buf: Buffer): Buffer {
   return buf;
 }
 
-async function parseDanfse(xml: string) {
+export async function parseDanfse(xml: string) {
   const data = await new DanfseXmlParser().parse(xml);
   if (!/^\d{50}$/.test(data.chaveAcesso) || !data.nNFSe || data.nNFSe === '-') {
     throw new Error('XML DANFSe inválido: chave de acesso ou nNFSe ausente');

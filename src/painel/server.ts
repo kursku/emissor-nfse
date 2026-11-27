@@ -24,6 +24,7 @@ import {
   ConflitoEmissaoError,
 } from '../store.js';
 import { mascaraDoc, mascararDocumentos } from '../mascara.js';
+import { listarCompetencias, notasDaCompetencia } from '../notas-locais.js';
 import {
   extrairDiagnosticoSefin,
   textoDiagnosticoSefin,
@@ -177,26 +178,37 @@ function modoRealAtivo(): boolean {
 // Mesmo valor que `config.ambiente`, sem importar config.ts (derruba o processo sem .env completo)
 // e sem carregar o .env no processo (um EMITIR_REAL=1 no arquivo ligaria o modo real do painel).
 export function lerAmbiente(env: NodeJS.ProcessEnv = process.env, envPath = join(ROOT, '.env')): 1 | 2 | null {
-  let bruto = env['NFSE_AMBIENTE'];
-  // Como em loadEnvFile, variável no shell (mesmo vazia) dispensa o arquivo.
-  if (bruto === undefined) {
-    try {
-      const arquivo = parseEnv(readFileSync(envPath, 'utf8'));
-      // No Windows process.env ignora caixa, então `nfse_ambiente` no .env também vale em config.ts.
-      const chave = process.platform === 'win32'
-        ? Object.keys(arquivo).find((nome) => nome.toUpperCase() === 'NFSE_AMBIENTE')
-        : 'NFSE_AMBIENTE';
-      bruto = chave === undefined ? undefined : arquivo[chave];
-    } catch (err: unknown) {
-      const codigo = (err as NodeJS.ErrnoException).code;
-      if (codigo !== 'ENOENT') {
-        console.error(`[server] Falha ao ler ${envPath}: ${codigo ?? 'erro sem código'}`);
-        return null;
-      }
-    }
+  let bruto: string | undefined;
+  try {
+    bruto = lerVariavel('NFSE_AMBIENTE', env, envPath);
+  } catch (err: unknown) {
+    console.error(`[server] Falha ao ler ${envPath}: ${(err as NodeJS.ErrnoException).code ?? 'erro sem código'}`);
+    return null;
   }
   const valor = Number(bruto?.trim() || '2');
   return valor === 1 || valor === 2 ? valor : null;
+}
+
+// Mesmo valor que `config.outputDir`: a consulta de Notas vale também em simulação, sem carregar config.ts.
+export function lerPastaDasNotas(env: NodeJS.ProcessEnv = process.env, envPath = join(ROOT, '.env')): string {
+  return lerVariavel('NFSE_OUTPUT_DIR', env, envPath)?.trim() || join(ROOT, 'output', 'nfewizard');
+}
+
+// O valor que config.ts veria, sem carregar o .env no processo. Lança se o .env existir e não der para ler.
+function lerVariavel(nome: string, env: NodeJS.ProcessEnv, envPath: string): string | undefined {
+  // Como em loadEnvFile, variável no shell (mesmo vazia) dispensa o arquivo.
+  if (env[nome] !== undefined) return env[nome];
+  try {
+    const arquivo = parseEnv(readFileSync(envPath, 'utf8'));
+    // No Windows process.env ignora caixa, então `nfse_ambiente` no .env também vale em config.ts.
+    const chave = process.platform === 'win32'
+      ? Object.keys(arquivo).find((item) => item.toUpperCase() === nome)
+      : nome;
+    return chave === undefined ? undefined : arquivo[chave];
+  } catch (err: unknown) {
+    if ((err as NodeJS.ErrnoException).code === 'ENOENT') return undefined;
+    throw err;
+  }
 }
 
 function textoFaixa(ambiente: 1 | 2 | null, real: boolean): string {
@@ -328,6 +340,30 @@ export function createPainelApp(deps: PainelDependencies = {}) {
     const outputDir = await resolverOutputDir();
     initDb(dbPath);
     res.json({ ...defaults, nDPS: String(proximoNDPS(outputDir)) });
+  });
+
+  const pastaDasNotas = () => deps.outputDir ?? lerPastaDasNotas(process.env, deps.envPath);
+
+  async function responderNotas(res: express.Response, ler: () => Promise<unknown>): Promise<void> {
+    try {
+      res.json(await ler());
+    } catch (err: unknown) {
+      console.error('[server] Falha ao ler as Notas:\n' + mascararDocumentos(String(err)));
+      res.status(500).json({ erro: 'Falha ao ler as Notas' });
+    }
+  }
+
+  app.get('/api/notas/competencias', async (_req, res) => {
+    await responderNotas(res, () => listarCompetencias(dbPath, pastaDasNotas()));
+  });
+
+  app.get('/api/notas', async (req, res) => {
+    const { competencia } = req.query;
+    if (typeof competencia !== 'string' || !/^\d{4}-(0[1-9]|1[0-2])$/.test(competencia)) {
+      res.status(400).json({ erro: 'Competência inválida: use AAAA-MM' });
+      return;
+    }
+    await responderNotas(res, () => notasDaCompetencia(dbPath, pastaDasNotas(), competencia));
   });
 
   app.get('/api/config', (_req, res) => {
