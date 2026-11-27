@@ -795,13 +795,13 @@ export function iniciarPainel(
   const encerrar = (sinal: NodeJS.Signals): void => {
     if (encerrando) return;
     encerrando = true;
-    removerSinais();
 
     onLog(`[server] ${sinal} recebido; encerrando painel...`);
 
     const timer = setTimeout(() => {
       if (finalizado) return;
       finalizado = true;
+      removerSinais();
       onError(`[server] Encerramento excedeu ${shutdownTimeoutMs}ms; forçando saída.`);
       server.closeAllConnections();
       onExit(1);

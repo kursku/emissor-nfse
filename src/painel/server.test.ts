@@ -981,8 +981,11 @@ test("iniciarPainel conclui requisicao em andamento ao receber SIGTERM e sai com
   const respostaPromise = pedir(address.port, "/api/teste-shutdown");
   await requisicaoEmVoo;
 
-  // Emite dois sinais seguidos para garantir idempotencia no encerramento.
+  // Emite dois sinais seguidos para garantir idempotencia no encerramento e que
+  // os listeners continuam ativos durante a drenagem (impedindo aborto por 2o sinal).
   sinais.emit("SIGTERM", "SIGTERM");
+  assert.equal(sinais.listenerCount("SIGTERM"), 1);
+  assert.equal(sinais.listenerCount("SIGINT"), 1);
   sinais.emit("SIGINT", "SIGINT");
 
   // Enquanto a requisicao estiver aberta, o servidor aguarda concluir.
