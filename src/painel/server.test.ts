@@ -13,7 +13,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 
 import { mascaraDoc, mascararDocumentos } from "../mascara.js";
-import { createPainelApp, PAINEL_TOKEN_HEADER } from "./server.js";
+import { createPainelApp, lerAmbiente, PAINEL_TOKEN_HEADER } from "./server.js";
 import { initDb, proximoNDPS, reservarEmissao, upsertVenda } from "../store.js";
 
 test("mascaraDoc mostra so os 3 primeiros e 2 ultimos digitos de um CPF", () => {
@@ -684,5 +684,227 @@ test('painel registra somente resumo seguro no erro da SEFIN', async () => {
     if (httpServer) await fechar(httpServer);
     initDb(':memory:');
     await rm(root, { recursive: true, force: true });
+  }
+});
+
+async function comPainel(
+  deps: Parameters<typeof createPainelApp>[0],
+  usar: (base: string) => Promise<void>,
+): Promise<void> {
+  const root = await mkdtemp(join(tmpdir(), "nfse-moldura-"));
+  const { server, port } = await ouvir(createPainelApp({ panelPort: 0, dbPath: join(root, "emissor.db"), ...deps }));
+  try {
+    await usar(`http://127.0.0.1:${port}`);
+  } finally {
+    await fechar(server);
+    initDb(":memory:");
+    await rm(root, { recursive: true, force: true });
+  }
+}
+
+async function comVariaveis(nomes: string[], usar: () => Promise<void>): Promise<void> {
+  const anteriores = nomes.map((nome) => [nome, process.env[nome]] as const);
+  for (const nome of nomes) delete process.env[nome];
+  try {
+    await usar();
+  } finally {
+    for (const [nome, valor] of anteriores) {
+      if (valor === undefined) delete process.env[nome];
+      else process.env[nome] = valor;
+    }
+  }
+}
+
+type ConfigPainel = {
+  modoSimulacao: boolean;
+  ambiente: 1 | 2 | null;
+  mensagemAmbiente: string;
+  recusaModoReal: string | null;
+};
+
+async function configDoPainel(base: string): Promise<ConfigPainel> {
+  return await (await fetch(`${base}/api/config`)).json() as ConfigPainel;
+}
+
+test("/api/config lidera com a simulacao, mostra o ambiente e a recusa do modo real", async () => {
+  // Literais de proposito: usar os helpers da rota esconderia uma mudanca errada neles.
+  const casos = [
+    {
+      configurado: "1", emitirReal: "", ambiente: 1, modoSimulacao: true,
+      mensagemAmbiente: "SIMULAÇÃO: nenhuma nota será enviada à SEFIN. Ambiente configurado: PRODUÇÃO (NFSE_AMBIENTE=1).",
+      recusaModoReal: null,
+    },
+    {
+      configurado: "2", emitirReal: "", ambiente: 2, modoSimulacao: true,
+      mensagemAmbiente: "SIMULAÇÃO: nenhuma nota será enviada à SEFIN. Ambiente configurado: HOMOLOGAÇÃO/PRODUÇÃO RESTRITA (NFSE_AMBIENTE=2).",
+      recusaModoReal: null,
+    },
+    {
+      // "0" é o que `nfse painel` sem --real define.
+      configurado: "2", emitirReal: "0", ambiente: 2, modoSimulacao: true,
+      mensagemAmbiente: "SIMULAÇÃO: nenhuma nota será enviada à SEFIN. Ambiente configurado: HOMOLOGAÇÃO/PRODUÇÃO RESTRITA (NFSE_AMBIENTE=2).",
+      recusaModoReal: null,
+    },
+    {
+      configurado: "1", emitirReal: "1", ambiente: 1, modoSimulacao: false,
+      mensagemAmbiente: "PRODUÇÃO (NFSE_AMBIENTE=1): nota com validade fiscal.",
+      recusaModoReal: null,
+    },
+    {
+      configurado: "2", emitirReal: "1", ambiente: 2, modoSimulacao: false,
+      mensagemAmbiente: "HOMOLOGAÇÃO/PRODUÇÃO RESTRITA (NFSE_AMBIENTE=2): sem validade fiscal; para produção configure NFSE_AMBIENTE=1.",
+      recusaModoReal: "MODO REAL recusado: NFSE_AMBIENTE=2 é produção restrita e não gera nota fiscal real.",
+    },
+    {
+      configurado: "3", emitirReal: "", ambiente: null, modoSimulacao: true,
+      mensagemAmbiente: "SIMULAÇÃO: nenhuma nota será enviada à SEFIN. Ambiente desconhecido: confira NFSE_AMBIENTE (1 ou 2) no .env.",
+      recusaModoReal: null,
+    },
+    {
+      configurado: "3", emitirReal: "1", ambiente: null, modoSimulacao: false,
+      mensagemAmbiente: "Ambiente desconhecido: confira NFSE_AMBIENTE (1 ou 2) no .env.",
+      recusaModoReal: null,
+    },
+  ];
+  await comVariaveis(["EMITIR_REAL", "NFSE_AMBIENTE"], async () => {
+    for (const { configurado, emitirReal, ...esperado } of casos) {
+      process.env["NFSE_AMBIENTE"] = configurado;
+      process.env["EMITIR_REAL"] = emitirReal;
+      await comPainel({}, async (base) => {
+        const { ambiente, modoSimulacao, mensagemAmbiente, recusaModoReal } = await configDoPainel(base);
+        assert.deepEqual({ ambiente, modoSimulacao, mensagemAmbiente, recusaModoReal }, esperado);
+      });
+    }
+    process.env["NFSE_AMBIENTE"] = "2";
+    await comPainel({ ambiente: 1 }, async (base) => {
+      assert.equal((await configDoPainel(base)).ambiente, 1, "deps.ambiente vence o shell");
+    });
+  });
+});
+
+test("/api/config le o .env uma vez, na criacao do painel", async () => {
+  const root = await mkdtemp(join(tmpdir(), "nfse-env-"));
+  const envPath = join(root, ".env");
+  try {
+    await comVariaveis(["EMITIR_REAL", "NFSE_AMBIENTE"], async () => {
+      writeFileSync(envPath, "NFSE_AMBIENTE=1\n");
+      await comPainel({ envPath }, async (base) => {
+        writeFileSync(envPath, "NFSE_AMBIENTE=2\n");
+        process.env["NFSE_AMBIENTE"] = "2";
+        assert.match((await configDoPainel(base)).mensagemAmbiente, /PRODUÇÃO \(NFSE_AMBIENTE=1\)/);
+      });
+
+      delete process.env["NFSE_AMBIENTE"];
+      writeFileSync(envPath, "NFSE_AMBIENTE=3\n");
+      await comPainel({ envPath }, async (base) => {
+        assert.match((await configDoPainel(base)).mensagemAmbiente, /Ambiente desconhecido/);
+      });
+    });
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("variavel do shell vale mesmo com .env ilegivel", async () => {
+  const root = await mkdtemp(join(tmpdir(), "nfse-env-"));
+  try {
+    assert.equal(lerAmbiente({ NFSE_AMBIENTE: "1" }, root), 1);
+    assert.equal(lerAmbiente({ NFSE_AMBIENTE: "" }, root), 2);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("no Windows a chave do .env ignora caixa, como process.loadEnvFile", { skip: process.platform !== "win32" }, async () => {
+  const root = await mkdtemp(join(tmpdir(), "nfse-env-"));
+  const envPath = join(root, ".env");
+  try {
+    writeFileSync(envPath, "nfse_ambiente=1\n");
+    assert.equal(lerAmbiente({}, envPath), 1);
+    writeFileSync(envPath, "nfse_ambiente=2\nNfse_Ambiente=1\n");
+    assert.equal(lerAmbiente({}, envPath), 1, "com chaves repetidas vale a mesma que loadEnvFile aplica");
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("/api/config expoe o ambiente resolvido, ou null quando desconhecido", async () => {
+  const root = await mkdtemp(join(tmpdir(), "nfse-env-"));
+  const envPath = join(root, ".env");
+  try {
+    await comVariaveis(["EMITIR_REAL", "NFSE_AMBIENTE"], async () => {
+      process.env["EMITIR_REAL"] = "1";
+      for (const [arquivo, esperado] of [["1", 1], ["2", 2], ["3", null]] as const) {
+        writeFileSync(envPath, `NFSE_AMBIENTE=${arquivo}\n`);
+        await comPainel({ envPath }, async (base) => {
+          assert.equal((await configDoPainel(base)).ambiente, esperado);
+        });
+      }
+    });
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("lerAmbiente avisa quando o .env existe mas nao pode ser lido", async () => {
+  const root = await mkdtemp(join(tmpdir(), "nfse-env-"));
+  const erros: string[] = [];
+  const originalError = console.error;
+  console.error = (...args: unknown[]) => { erros.push(args.join(" ")); };
+  try {
+    assert.equal(lerAmbiente({}, root), null);
+    assert.equal(erros.length, 1);
+    assert.ok(erros[0]?.includes("EISDIR"));
+    assert.ok(erros[0]?.includes(root));
+  } finally {
+    console.error = originalError;
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("ambiente do painel segue a precedencia da CLI sem carregar o .env no processo", async () => {
+  const root = await mkdtemp(join(tmpdir(), "nfse-env-"));
+  const envPath = join(root, ".env");
+  try {
+    writeFileSync(envPath, "NFSE_AMBIENTE=1\nEMITIR_REAL=1\n");
+    const env: NodeJS.ProcessEnv = {};
+    assert.equal(lerAmbiente(env, envPath), 1);
+    assert.deepEqual(env, {}, "ler o aviso nao pode ligar EMITIR_REAL nem mudar o ambiente");
+    assert.equal(lerAmbiente({ NFSE_AMBIENTE: "2" }, envPath), 2, "variavel do shell vence o .env");
+    assert.equal(lerAmbiente({}, join(root, "nao-existe")), 2, "sem configuracao vale o padrao 2");
+    assert.equal(lerAmbiente({ NFSE_AMBIENTE: " " }, envPath), 2);
+    // Paridade com config.ts: variável vazia no shell impede o .env e cai no padrão.
+    assert.equal(lerAmbiente({ NFSE_AMBIENTE: "" }, envPath), 2);
+    assert.equal(lerAmbiente({ NFSE_AMBIENTE: "3" }, envPath), null);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("painel serve a moldura com as tres secoes para qualquer ?secao=", async () => {
+  await comPainel({}, async (base) => {
+    for (const secao of ["fechamento", "vendas", "emissao-manual"]) {
+      const response = await fetch(`${base}/?secao=${secao}`);
+      assert.equal(response.status, 200);
+      const html = await response.text();
+      assert.match(html, /id="faixa-ambiente"/);
+      for (const id of ["fechamento", "vendas", "emissao-manual"]) {
+        assert.match(html, new RegExp(`<a href="\\?secao=${id}" data-secao="${id}">`), `link ${id}`);
+        assert.match(html, new RegExp(`<section[^>]* data-secao="${id}"`), `secao ${id}`);
+      }
+    }
+  });
+});
+
+test("createPainelApp aceita outputDir injetado", async () => {
+  const outputDir = await mkdtemp(join(tmpdir(), "nfse-saida-"));
+  try {
+    writeFileSync(join(outputDir, "ndps.json"), JSON.stringify({ proximoNDPS: 42 }));
+    await comPainel({ outputDir }, async (base) => {
+      const defaults = await (await fetch(`${base}/api/defaults`)).json();
+      assert.equal(defaults.nDPS, "42");
+    });
+  } finally {
+    await rm(outputDir, { recursive: true, force: true });
   }
 });

@@ -10,6 +10,7 @@ import { join, dirname, isAbsolute, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawn } from 'node:child_process';
 import { DatabaseSync } from 'node:sqlite';
+import { parseEnv } from 'node:util';
 import { DEFAULTS, exigirLeiauteNovoPermitido } from '../montar-dps.js';
 import type { EmissaoInput } from '../montar-dps.js';
 import {
@@ -35,7 +36,7 @@ import {
   MENSAGEM_CHAVE_A_VERIFICAR,
 } from '../chave-acesso.js';
 import { ErroAntesDoEnvio, ehErroAntesDoEnvio } from '../emissao-erros.js';
-import { mensagemModoReal, recusaModoReal } from '../ambiente.mjs';
+import { mensagemModoReal, recusaModoReal, rotuloAmbiente } from '../ambiente.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(__dirname, '..', '..');
@@ -79,6 +80,7 @@ export interface PainelDependencies {
   dbPath?: string;
   defaults?: EmissaoInput;
   ambiente?: 1 | 2;
+  envPath?: string;
   agora?: Date;
   exigirBundlePatchado?: () => void;
   now?: () => number;
@@ -172,6 +174,39 @@ function modoRealAtivo(): boolean {
   return process.env['EMITIR_REAL'] === '1';
 }
 
+// Mesmo valor que `config.ambiente`, sem importar config.ts (derruba o processo sem .env completo)
+// e sem carregar o .env no processo (um EMITIR_REAL=1 no arquivo ligaria o modo real do painel).
+export function lerAmbiente(env: NodeJS.ProcessEnv = process.env, envPath = join(ROOT, '.env')): 1 | 2 | null {
+  let bruto = env['NFSE_AMBIENTE'];
+  // Como em loadEnvFile, variável no shell (mesmo vazia) dispensa o arquivo.
+  if (bruto === undefined) {
+    try {
+      const arquivo = parseEnv(readFileSync(envPath, 'utf8'));
+      // No Windows process.env ignora caixa, então `nfse_ambiente` no .env também vale em config.ts.
+      const chave = process.platform === 'win32'
+        ? Object.keys(arquivo).find((nome) => nome.toUpperCase() === 'NFSE_AMBIENTE')
+        : 'NFSE_AMBIENTE';
+      bruto = chave === undefined ? undefined : arquivo[chave];
+    } catch (err: unknown) {
+      const codigo = (err as NodeJS.ErrnoException).code;
+      if (codigo !== 'ENOENT') {
+        console.error(`[server] Falha ao ler ${envPath}: ${codigo ?? 'erro sem código'}`);
+        return null;
+      }
+    }
+  }
+  const valor = Number(bruto?.trim() || '2');
+  return valor === 1 || valor === 2 ? valor : null;
+}
+
+function textoFaixa(ambiente: 1 | 2 | null, real: boolean): string {
+  const desconhecido = 'Ambiente desconhecido: confira NFSE_AMBIENTE (1 ou 2) no .env.';
+  if (real) return (ambiente && mensagemModoReal(ambiente)) || desconhecido;
+  // Em simulação só o nome do ambiente serve de contexto: o resto do texto fala de validade fiscal.
+  const contexto = ambiente ? `Ambiente configurado: ${rotuloAmbiente(ambiente)}.` : desconhecido;
+  return `SIMULAÇÃO: nenhuma nota será enviada à SEFIN. ${contexto}`;
+}
+
 function textoDiagnostico(valor: unknown): string {
   if (typeof valor === 'string') return valor;
   try {
@@ -205,6 +240,8 @@ export function createPainelApp(deps: PainelDependencies = {}) {
   const marcarRejeitada = deps.marcarTentativaRejeitada ?? marcarTentativaRejeitada;
   const tokens = new Map<string, number>();
   const runSpawn = deps.spawnTsx ?? spawnTsx;
+  // Lido uma vez: config.ambiente também congela na primeira carga, e a faixa não pode mudar sozinha.
+  const ambienteDaFaixa = deps.ambiente ?? lerAmbiente(process.env, deps.envPath);
   const app = express();
   if (deps.dbPath !== undefined) {
     initDb(dbPath);
@@ -297,6 +334,9 @@ export function createPainelApp(deps: PainelDependencies = {}) {
     res.json({
       modoSimulacao: !modoRealAtivo(),
       emitirReal: modoRealAtivo(),
+      ambiente: ambienteDaFaixa,
+      mensagemAmbiente: textoFaixa(ambienteDaFaixa, modoRealAtivo()),
+      recusaModoReal: ambienteDaFaixa && recusaModoReal(modoRealAtivo(), ambienteDaFaixa),
     });
   });
 

@@ -4,16 +4,24 @@
 <meta charset="UTF-8">
 <title>Painel NFS-e</title>
 <style>
-  body { font-family: system-ui, sans-serif; max-width: 960px; margin: 2rem auto; padding: 0 1rem; background: #f6f7f9; color: #1a1a2e; }
-  h1 { font-size: 1.3rem; margin-bottom: .5rem; }
+  body { font-family: system-ui, sans-serif; margin: 0; height: 100vh; display: flex; flex-direction: column; background: #f6f7f9; color: #1a1a2e; }
+  h1 { font-size: 1.1rem; margin: 0 0 1rem; padding: 0 .75rem; }
   h2 { font-size: 1.05rem; margin: 1.2rem 0 .5rem; border-bottom: 1px solid #d0d4dc; padding-bottom: .3rem; }
-  .aviso { background: #fff3cd; border: 1px solid #ffc107; border-radius: 6px; padding: .6rem .9rem; font-size: .9rem; }
-  .selo-sim { background: #fff3cd; border: 2px solid #e67e22; border-radius: 8px; padding: .5rem 1.2rem; font-size: 1.1rem; font-weight: 700; color: #9a3412; text-align: center; margin: .8rem 0; letter-spacing: .04em; }
-  .tabs { display: flex; gap: .5rem; margin: 1rem 0 0; }
-  .tab-btn { padding: .5rem 1.2rem; border: 1px solid #c6cad2; border-bottom: none; border-radius: 6px 6px 0 0; background: #e9eaf0; cursor: pointer; font-size: .9rem; font-weight: 600; color: #555; }
-  .tab-btn.ativo { background: #fff; color: #1a1a2e; border-color: #c6cad2; }
-  .tab-pane { display: none; background: #fff; border: 1px solid #c6cad2; border-radius: 0 8px 8px 8px; padding: 1rem; }
-  .tab-pane.ativo { display: block; }
+  .aviso { background: #fff3cd; border: 1px solid #ffc107; border-radius: 6px; padding: .6rem .9rem; font-size: .9rem; margin-bottom: 1rem; }
+  /* Moldura: faixa de ambiente fixa, menu lateral e conteudo com rolagem propria */
+  .faixa-ambiente { background: #fff3cd; border-bottom: 2px solid #e67e22; color: #7c2d12; padding: .55rem 1rem; font-weight: 700; text-align: center; font-size: .95rem; }
+  .casca { flex: 1; min-height: 0; display: flex; }
+  nav { box-sizing: border-box; flex: 0 0 208px;background: #171a2b; color: #fff; padding: 1.2rem .75rem; display: flex; flex-direction: column; gap: .25rem; overflow-y: auto; }
+  nav a { color: #c5c8dc; text-decoration: none; padding: .6rem .75rem; border-radius: 6px; font-size: .95rem; }
+  nav a:hover { background: #262a42; color: #fff; }
+  nav a[aria-current] { background: #4338ca; color: #fff; font-weight: 600; }
+  main { flex: 1; min-width: 0; overflow: auto; padding: 1.5rem; }
+  .conteudo { max-width: 960px; margin: 0 auto; }
+  .painel-secao { background: #fff; border: 1px solid #c6cad2; border-radius: 8px; padding: 1rem; }
+  .vazio { padding: 2.5rem 1rem; text-align: center; color: #555; }
+  :focus-visible { outline: 3px solid #2563eb; outline-offset: 2px; }
+  nav :focus-visible { outline-color: #fbbf24; }
+  button, select { min-height: 24px; min-width: 24px; }
   /* Contadores */
   .contadores { display: flex; flex-wrap: wrap; gap: .6rem; margin-bottom: 1rem; }
   .contador { border-radius: 8px; padding: .5rem .9rem; min-width: 90px; text-align: center; border: 1px solid transparent; }
@@ -38,6 +46,9 @@
   th { background: #f1f5f9; padding: .4rem .6rem; text-align: left; border-bottom: 2px solid #d0d4dc; font-size: .78rem; text-transform: uppercase; color: #555; letter-spacing: .04em; }
   td { padding: .4rem .6rem; border-bottom: 1px solid #e8eaf0; vertical-align: top; }
   tr:hover td { background: #f8f9fc; }
+  /* So a tabela rola na horizontal; produto, nome e erro podem quebrar no meio da palavra */
+  #tabela-container { overflow-x: auto; }
+  #tabela-body td:nth-child(2), #tabela-body td:nth-child(3), #tabela-body td:nth-child(7) { overflow-wrap: anywhere; }
   .badge { display: inline-block; padding: .15rem .5rem; border-radius: 9999px; font-size: .75rem; font-weight: 600; }
   .s-simulada { background: #e0f2fe; color: #0369a1; }
   .s-pronta { background: #dcfce7; color: #166534; }
@@ -59,7 +70,7 @@
   .btn-acao { padding: .5rem 1.1rem; border: 0; border-radius: 6px; cursor: pointer; font-size: .9rem; font-weight: 600; color: #fff; }
   .btn-importar { background: #2563eb; }
   .btn-importar:disabled { background: #93c5fd; cursor: wait; }
-  .btn-simular { background: #16a34a; }
+  .btn-simular { background: #15803d; }
   .btn-simular:disabled { background: #86efac; cursor: wait; }
   .acao-resultado { font-size: .82rem; font-family: ui-monospace, monospace; white-space: pre-wrap; background: #fff; border: 1px solid #d0d4dc; border-radius: 6px; padding: .6rem .8rem; max-height: 180px; overflow-y: auto; display: none; }
   .acao-resultado.ok { border-color: #4ade80; background: #f0fdf4; }
@@ -82,17 +93,27 @@
 </style>
 </head>
 <body>
-<h1>Painel NFS-e</h1>
+<div id="faixa-ambiente" class="faixa-ambiente" role="status">Carregando ambiente...</div>
+
+<div class="casca">
+<nav aria-label="Seções">
+  <h1>Painel NFS-e</h1>
+  <a href="?secao=fechamento" data-secao="fechamento">Fechamento</a>
+  <a href="?secao=vendas" data-secao="vendas">Vendas</a>
+  <a href="?secao=emissao-manual" data-secao="emissao-manual">Emissão manual</a>
+</nav>
+
+<main>
+<div class="conteudo">
 <div id="aviso-prod" class="aviso" style="display:none">Aliquota vigente: ISS 5% (desde 2026-05-20). Competencia = data de hoje.</div>
-<div id="selo-sim" class="selo-sim" style="display:none">MODO SIMULACAO -- nenhuma nota real sera enviada a SEFIN</div>
 
-<div class="tabs">
-  <button class="tab-btn ativo" onclick="showTab('acompanhamento')">Acompanhamento</button>
-  <button class="tab-btn" onclick="showTab('emissao-manual')">Emissao Manual</button>
-</div>
+<section class="painel-secao" data-secao="fechamento" aria-label="Fechamento" hidden>
+  <h2>Fechamento</h2>
+  <p class="vazio">Em breve: Notas por competência.</p>
+</section>
 
-<!-- ABA: ACOMPANHAMENTO -->
-<div id="tab-acompanhamento" class="tab-pane ativo">
+<!-- SECAO: VENDAS -->
+<section class="painel-secao" data-secao="vendas" aria-label="Vendas" hidden>
 
   <h2>Resumo</h2>
   <div class="contadores" id="contadores">
@@ -166,7 +187,7 @@
         </tr>
       </thead>
       <tbody id="tabela-body">
-        <tr><td colspan="7" style="text-align:center;color:#aaa;padding:1.5rem">Carregando...</td></tr>
+        <tr><td colspan="7" style="text-align:center;color:#666;padding:1.5rem">Carregando...</td></tr>
       </tbody>
     </table>
     <div class="paginacao">
@@ -176,10 +197,10 @@
     </div>
   </div>
 
-</div>
+</section>
 
-<!-- ABA: EMISSAO MANUAL -->
-<div id="tab-emissao-manual" class="tab-pane">
+<!-- SECAO: EMISSAO MANUAL -->
+<section class="painel-secao" data-secao="emissao-manual" aria-label="Emissão manual" hidden>
   <div id="aviso-manual" class="aviso" style="margin-bottom:1rem">Cada clique em "Emitir" gera um documento fiscal de verdade na SEFIN Nacional.</div>
 
   <form id="form">
@@ -231,31 +252,61 @@
     <button type="submit" id="btn-emitir" class="btn-emitir">Emitir NFS-e (producao real)</button>
   </form>
   <pre id="resultado"></pre>
+</section>
+</div>
+</main>
 </div>
 
 <script>
-// --- Tabs ---
-function showTab(id) {
-  document.querySelectorAll('.tab-btn').forEach((b, i) => {
-    b.classList.toggle('ativo', ['acompanhamento','emissao-manual'][i] === id);
+// --- Secoes (a secao ativa mora na URL: ?secao=) ---
+function mostrarSecao() {
+  const links = [...document.querySelectorAll('nav a[data-secao]')];
+  const pedida = new URLSearchParams(location.search).get('secao');
+  const atual = links.some(a => a.dataset.secao === pedida) ? pedida : 'fechamento';
+  links.forEach(a => {
+    if (a.dataset.secao === atual) a.setAttribute('aria-current', 'page');
+    else a.removeAttribute('aria-current');
   });
-  document.querySelectorAll('.tab-pane').forEach(p => {
-    p.classList.toggle('ativo', p.id === 'tab-' + id);
-  });
+  document.querySelectorAll('section[data-secao]').forEach(s => { s.hidden = s.dataset.secao !== atual; });
 }
+document.querySelectorAll('nav a[data-secao]').forEach(a => {
+  a.addEventListener('click', e => {
+    if (e.ctrlKey || e.metaKey || e.shiftKey || e.altKey) return;
+    e.preventDefault();
+    if (a.getAttribute('aria-current') !== 'page') history.pushState(null, '', a.getAttribute('href'));
+    mostrarSecao();
+  });
+});
+window.addEventListener('popstate', mostrarSecao);
+mostrarSecao();
 
 // --- Config ---
 let modoSimulacao = true;
 const painelToken = document.querySelector('meta[name="painel-token"]')?.content || '';
-fetch('/api/config').then(r => r.json()).then(cfg => {
+fetch('/api/config').then(r => {
+  if (!r.ok) throw new Error('config ' + r.status);
+  return r.json();
+}).then(cfg => {
+  if (typeof cfg.modoSimulacao !== 'boolean') throw new Error('config incompleta');
   modoSimulacao = cfg.modoSimulacao;
+  document.getElementById('faixa-ambiente').textContent = cfg.mensagemAmbiente;
   if (modoSimulacao) {
-    document.getElementById('selo-sim').style.display = 'block';
     document.getElementById('btn-emitir').disabled = true;
     document.getElementById('btn-emitir').title = 'Desabilitado em modo simulacao (EMITIR_REAL nao esta ativo)';
+  } else if (cfg.ambiente !== 1) {
+    // Emissao real so em producao: o servidor recusa o ambiente 2 com 409.
+    document.getElementById('btn-emitir').disabled = true;
+    document.getElementById('btn-emitir').title = cfg.ambiente === 2
+      ? cfg.recusaModoReal + ' Emissão real exige NFSE_AMBIENTE=1.'
+      : 'Desabilitado: ambiente desconhecido';
   } else {
     document.getElementById('aviso-prod').style.display = 'block';
   }
+}).catch(() => {
+  modoSimulacao = true;
+  document.getElementById('btn-emitir').disabled = true;
+  document.getElementById('faixa-ambiente').textContent =
+    'Não foi possível ler o ambiente. Recarregue a página antes de emitir.';
 });
 
 // --- Contadores ---
@@ -294,7 +345,7 @@ function carregarVendas(pg) {
 
     const tbody = document.getElementById('tabela-body');
     if (!d.vendas || d.vendas.length === 0) {
-      tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:#aaa;padding:1.5rem">Nenhum registro encontrado</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:#666;padding:1.5rem">Nenhum registro encontrado</td></tr>';
       return;
     }
 
