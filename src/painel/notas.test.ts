@@ -32,10 +32,14 @@ interface Xml {
   xNome: string;
   doc: string;
   vServ: string;
+  /** 1=produção (padrão aqui), 2=homologação */
+  tpAmb?: "1" | "2";
 }
 
-function xmlAutorizado({ chave, nNFSe, dCompet, xNome, doc, vServ }: Xml): string {
+function xmlAutorizado({ chave, nNFSe, dCompet, xNome, doc, vServ, tpAmb = "1" }: Xml): string {
   return MODELO
+    // O modelo é de homologação.
+    .replace("<tpAmb>2</tpAmb>", `<tpAmb>${tpAmb}</tpAmb>`)
     .replace(`Id="NFS${"9".repeat(50)}"`, `Id="NFS${chave}"`)
     .replace("<nNFSe>42</nNFSe>", `<nNFSe>${nNFSe}</nNFSe>`)
     .replace("<dCompet>2026-10-26</dCompet>", `<dCompet>${dCompet}</dCompet>`)
@@ -153,6 +157,7 @@ test("Notas da competência: XML vence a Venda, entidades decodificadas e docume
           emitidaEm: "2026-09-02T15:00:00.000Z",
           competencia: "2026-09",
           competenciaEstimada: true,
+          homologacao: false,
           tomador: "Outro Sem XML",
           documentoMascarado: "112...81",
           valor: 50,
@@ -167,6 +172,7 @@ test("Notas da competência: XML vence a Venda, entidades decodificadas e docume
           emitidaEm: "2026-09-15T15:00:00.000Z",
           competencia: "2026-09",
           competenciaEstimada: false,
+          homologacao: false,
           tomador: "Literal &#201; Dois",
           documentoMascarado: "111...35",
           valor: 2000.2,
@@ -181,6 +187,7 @@ test("Notas da competência: XML vence a Venda, entidades decodificadas e docume
           emitidaEm: "2026-10-20T15:00:00.000Z",
           competencia: "2026-09",
           competenciaEstimada: false,
+          homologacao: false,
           tomador: "Silva & Filhos Ética <ME>",
           documentoMascarado: "114...61",
           valor: 1000.1,
@@ -360,6 +367,147 @@ test("NFSE_OUTPUT_DIR em branco cai na pasta padrão, como no config", () => {
   const padrao = fileURLToPath(new URL("../../output/nfewizard", import.meta.url));
   assert.equal(lerPastaDasNotas({ NFSE_OUTPUT_DIR: "  " }, "nao-existe"), padrao);
   assert.equal(lerPastaDasNotas({}, "nao-existe"), padrao);
+});
+
+test("Nota de homologação aparece marcada e fica fora do total nas duas rotas", async () => {
+  await comNotas(
+    async ({ base }) => {
+      assert.deepEqual((await json(`${base}/api/notas/competencias`)).body, [
+        { competencia: "2026-07", total: 0, quantidade: 0, estimada: false },
+        { competencia: "2026-06", total: 100.5, quantidade: 1, estimada: false },
+      ]);
+
+      const junho = (await json(`${base}/api/notas?competencia=2026-06`)).body;
+      assert.equal(junho.total, 100.5);
+      assert.equal(junho.quantidade, 1);
+      assert.deepEqual(
+        junho.notas.map((n: any) => [n.chave, n.valor, n.homologacao]),
+        [
+          [CHAVE_A, 100.5, false],
+          [CHAVE_B, 7000, true],
+        ],
+      );
+
+      const julho = (await json(`${base}/api/notas?competencia=2026-07`)).body;
+      assert.equal(julho.total, 0);
+      assert.equal(julho.quantidade, 0);
+      assert.equal(julho.notas.length, 1);
+      assert.equal(julho.notas[0].homologacao, true);
+    },
+    async (dbPath, outputDir) => {
+      initDb(dbPath);
+      await mkdir(join(outputDir, "autorizacao"), { recursive: true });
+      const comuns = { xNome: "Tomador Sintético", doc: "<CPF>11144477735</CPF>" };
+      nota("venda-prod", CHAVE_A, 1, "2026-06-01T15:00:00.000Z", 1, "Venda", "52998224725");
+      await gravarXml(outputDir, { ...comuns, chave: CHAVE_A, nNFSe: "1", dCompet: "2026-06-01", vServ: "100.50" });
+      nota("venda-homolog", CHAVE_B, 2, "2026-06-02T15:00:00.000Z", 1, "Venda", "52998224725");
+      await gravarXml(outputDir, { ...comuns, chave: CHAVE_B, nNFSe: "2", dCompet: "2026-06-02", vServ: "7000.00", tpAmb: "2" });
+      nota("venda-so-homolog", CHAVE_C, 3, "2026-07-03T15:00:00.000Z", 1, "Venda", "52998224725");
+      await gravarXml(outputDir, { ...comuns, chave: CHAVE_C, nNFSe: "3", dCompet: "2026-07-03", vServ: "9.00", tpAmb: "2" });
+    },
+  );
+});
+
+test("tomador de 120 caracteres volta inteiro e decodificado", async () => {
+  await comNotas(async ({ base, outputDir }) => {
+    await gravarXml(outputDir, {
+      chave: CHAVE_E,
+      nNFSe: "100",
+      dCompet: "2026-08-10",
+      xNome: "Fict&#237;cia &amp; " + "Z".repeat(109),
+      doc: "<CPF>11144477735</CPF>",
+      vServ: "10.00",
+    });
+
+    const { body } = await json(`${base}/api/notas?competencia=2026-08`);
+
+    assert.equal(body.notas[0].tomador, "Fictícia & " + "Z".repeat(109));
+    assert.equal(body.notas[0].tomador.length, 120);
+  });
+});
+
+test("XML ruim que não mudou é lido e avisado uma vez só", async () => {
+  await comNotas(async ({ base, outputDir }) => {
+    const caminho = join(outputDir, "autorizacao", `${CHAVE_E}.xml`);
+    const bom = readFileSync(caminho, "utf8");
+    const ruim = bom.replace("<dCompet>2026-08-10</dCompet>", "<dCompet>XXXX-XX-XX</dCompet>");
+    const data = new Date("2030-01-01T00:00:00Z");
+    const gravar = async (xml: string) => {
+      await writeFile(caminho, xml);
+      await utimes(caminho, data, data);
+    };
+    const originalWarn = console.warn;
+    const avisos: string[] = [];
+    console.warn = (mensagem: string) => { avisos.push(mensagem); };
+    try {
+      const url = `${base}/api/notas?competencia=2026-08`;
+      await gravar(ruim);
+      // Consultas simultâneas também fazem um parse só.
+      for (const { body } of await Promise.all([json(url), json(url)])) assert.equal(body.total, 777.77);
+      // Mesmo tamanho e mesma data: se o XML fosse lido de novo, o total voltaria a ser o dele.
+      await gravar(bom);
+      assert.equal((await json(url)).body.total, 777.77);
+      assert.equal(avisos.filter((aviso) => aviso.includes(CHAVE_E)).length, 1);
+
+      // Data nova: a recusa guardada não vale mais.
+      const depois = new Date("2031-01-01T00:00:00Z");
+      await utimes(caminho, depois, depois);
+      assert.equal((await json(url)).body.total, 10);
+    } finally {
+      console.warn = originalWarn;
+    }
+  });
+});
+
+test("nome que só o parser estrito recusa não descarta o resto do XML", async () => {
+  await comNotas(async ({ base, outputDir }) => {
+    await gravarXml(outputDir, {
+      chave: CHAVE_E,
+      nNFSe: "100",
+      dCompet: "2026-08-10",
+      xNome: "Alfa & Beta",
+      doc: "<CPF>11144477735</CPF>",
+      vServ: "25.00",
+    });
+    const originalWarn = console.warn;
+    const avisos: string[] = [];
+    console.warn = (mensagem: string) => { avisos.push(mensagem); };
+    try {
+      const { body } = await json(`${base}/api/notas?competencia=2026-08`);
+
+      assert.equal(body.total, 25);
+      assert.equal(body.notas[0].competenciaEstimada, false);
+      assert.equal(body.notas[0].tomador, "Alfa & Beta");
+    } finally {
+      console.warn = originalWarn;
+    }
+    assert.equal(avisos.filter((aviso) => aviso.includes(CHAVE_E)).length, 1);
+  });
+});
+
+test("o Fechamento marca a homologação, mostra o mês só dela e rotula cada opção com o próprio resumo", () => {
+  const html = readFileSync(new URL("./painel.html", import.meta.url), "utf8");
+  assert.match(html, /if \(nota\.homologacao\) \{[\s\S]*?'homologação, fora do total'[\s\S]*?valor\.append\([^;]*selo\)/);
+  assert.match(html, /if \(mes\.notas\.length === 0\)/);
+  assert.match(html, /rotuloDaCompetencia\(c, lista\.find\(r => r\.competencia === c\)\)/);
+});
+
+test("a opção do seletor mostra mês, total e quantidade da competência", () => {
+  const html = readFileSync(new URL("./painel.html", import.meta.url), "utf8").replace(/\r\n/g, "\n");
+  const fonte = /function rotuloDaCompetencia[\s\S]*?\n}\n/.exec(html)?.[0];
+  assert.ok(fonte, "rotuloDaCompetencia não encontrada");
+  const brl = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" });
+  const rotulo = new Function("brl", `${fonte}return rotuloDaCompetencia;`)(brl);
+
+  assert.equal(
+    rotulo("2026-11", { total: 1234, quantidade: 5, estimada: false }),
+    "nov/2026 · R$\u00a01.234,00 · 5 notas",
+  );
+  assert.equal(
+    rotulo("2026-05", { total: 0.5, quantidade: 1, estimada: true }),
+    "mai/2026 · R$\u00a00,50 · 1 nota (estimada)",
+  );
+  assert.equal(rotulo("2020-01", undefined), "jan/2020");
 });
 
 test("o Fechamento monta as linhas sem concatenar HTML", () => {

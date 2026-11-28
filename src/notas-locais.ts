@@ -7,6 +7,8 @@ import { readFile, stat } from 'node:fs/promises';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 
+import xml2js from 'xml2js';
+
 import { chaveAcessoValida } from './chave-acesso.js';
 import { parseDanfse } from './danfse.js';
 import { mascaraDoc, mascararDocumentos } from './mascara.js';
@@ -23,6 +25,8 @@ export interface NotaListada {
   tomador: string | null;
   documentoMascarado: string;
   valor: number | null;
+  /** XML com tpAmb=2: aparece na lista, fora do total e da quantidade. */
+  homologacao: boolean;
   idVenda: string | null;
   temXml: boolean;
   temPdf: boolean;
@@ -46,42 +50,60 @@ interface Registro {
   data_venda: string | null;
 }
 
-type CamposDoXml = Pick<NotaListada, 'nNFSe' | 'competencia' | 'tomador' | 'documentoMascarado' | 'valor'>;
+type CamposDoXml = Pick<NotaListada, 'nNFSe' | 'competencia' | 'tomador' | 'documentoMascarado' | 'valor' | 'homologacao'>;
 
-// O parser da lib decodifica só as entidades nomeadas; referências numéricas ficariam cruas.
-function decodificarReferencias(xml: string): string {
-  return xml.replace(/&#(x[0-9a-f]+|\d+);/gi, (referencia, codigo: string) => {
-    const ponto = /^x/i.test(codigo) ? parseInt(codigo.slice(1), 16) : Number(codigo);
-    if (ponto === 0x26) return '&amp;';
-    if (ponto === 0x3c) return '&lt;';
-    return ponto <= 0x10ffff ? String.fromCodePoint(ponto) : referencia;
-  });
+function avisar(oQue: string, chave: string, err: unknown): void {
+  const motivo = err instanceof Error ? err.message : String(err);
+  console.warn(mascararDocumentos(`[notas] ${oQue}, chave ${chave}: `) + mascararDocumentos(motivo));
+}
+
+// O parser do DANFSe corta o nome para a impressão e deixa referências numéricas cruas.
+async function nomeDoTomador(xml: string): Promise<string | null> {
+  const raiz = await xml2js.parseStringPromise(xml, { explicitArray: false });
+  // Os mesmos envelopes que o parser do DANFSe aceita.
+  const nfse = raiz.NFSe ?? raiz.retNFSe?.NFSe ?? raiz.NFSeProc?.NFSe ?? raiz;
+  const nome: unknown = (nfse.infNFSe ?? nfse).DPS?.infDPS?.toma?.xNome;
+  return typeof nome === 'string' ? nome.trim() || null : null;
 }
 
 /** O parser do DANFSe devolve texto formatado para impressão; aqui volta a ser dado. */
 async function lerCamposDoXml(xml: string, chave: string): Promise<CamposDoXml> {
-  const dados = await parseDanfse(decodificarReferencias(xml));
+  const dados = await parseDanfse(xml);
   if (dados.chaveAcesso !== chave) throw new Error('chave do XML diverge da Nota');
   const data = /^\d{2}\/(\d{2})\/(\d{4})$/.exec(dados.dCompet);
   if (!data) throw new Error('dCompet ausente ou inválida');
   return {
     nNFSe: dados.nNFSe,
     competencia: `${data[2]}-${data[1]}`,
-    // shortcut: o parser corta nomes acima de 80 caracteres; ler o XML direto se isso incomodar.
-    // XML sem <toma> é válido: o parser devolve tomador nulo.
-    tomador: !dados.tomador || dados.tomador.xNome === '-' ? null : dados.tomador.xNome,
+    // XML sem <toma> é válido.
+    // O xml2js é mais estrito que o parser do DANFSe: se recusar, só o nome degrada.
+    tomador: await nomeDoTomador(xml).catch((err: unknown) => {
+      avisar('nome do tomador pode estar cortado', chave, err);
+      const nome = dados.tomador?.xNome;
+      return nome && nome !== '-' ? nome : null;
+    }),
     documentoMascarado: mascaraDoc(dados.tomador?.doc),
     valor: parseValorMonetario(dados.vServ.replace(/^R\$\s*/, '')),
+    homologacao: dados.tpAmb === 'Homologação',
   };
 }
 
-// Cada parse custa alguns ms e toda consulta passa por todos os XMLs: guarda enquanto o arquivo não muda.
-const jaLidos = new Map<string, { versao: string; campos: CamposDoXml }>();
+// Cada parse custa alguns ms e toda consulta passa por todos os XMLs: guarda enquanto o arquivo
+// não muda, inclusive a recusa (null), para um XML ruim avisar uma vez só.
+const jaLidos = new Map<string, { versao: string; campos: Promise<CamposDoXml | null> }>();
 
-async function lerXmlAutorizado(caminho: string, versao: string, chave: string): Promise<CamposDoXml> {
+async function lerXmlAutorizado(caminho: string, versao: string, chave: string): Promise<CamposDoXml | null> {
   const guardado = jaLidos.get(caminho);
   if (guardado?.versao === versao) return guardado.campos;
-  const campos = await lerCamposDoXml(await readFile(caminho, 'utf8'), chave);
+  // Falha de leitura (arquivo preso, permissão) fica fora do cache: pode passar sem o arquivo mudar.
+  const xml = await readFile(caminho, 'utf8');
+  // Outra consulta pode ter começado o parse enquanto esta lia o arquivo.
+  const emAndamento = jaLidos.get(caminho);
+  if (emAndamento?.versao === versao) return emAndamento.campos;
+  const campos = lerCamposDoXml(xml, chave).catch((err: unknown) => {
+    avisar('XML não usado', chave, err);
+    return null;
+  });
   jaLidos.set(caminho, { versao, campos });
   return campos;
 }
@@ -106,10 +128,7 @@ async function montarNota(registro: Registro, outputDir: string): Promise<NotaLi
       temXml = true;
       doXml = await lerXmlAutorizado(caminho, `${mtimeMs}:${size}`, chave);
     } catch (err: unknown) {
-      if ((err as NodeJS.ErrnoException).code !== 'ENOENT') {
-        const motivo = err instanceof Error ? err.message : String(err);
-        console.warn(mascararDocumentos(`[notas] XML não usado, chave ${chave}: `) + mascararDocumentos(motivo));
-      }
+      if ((err as NodeJS.ErrnoException).code !== 'ENOENT') avisar('XML não usado', chave, err);
     }
   }
 
@@ -132,6 +151,8 @@ async function montarNota(registro: Registro, outputDir: string): Promise<NotaLi
     documentoMascarado: doXml ? doXml.documentoMascarado : mascaraDoc(registro.cpf_cnpj),
     // A coluna é REAL, mas o SQLite aceita texto: não pode virar NaN no total.
     valor: doXml ? doXml.valor : (typeof registro.valor === 'number' ? registro.valor : null),
+    // Sem XML não há como saber o ambiente.
+    homologacao: doXml?.homologacao ?? false,
     idVenda: registro.id_venda,
     temXml,
     temPdf: chaveOk && existsSync(join(outputDir, `danfse-${chave}.pdf`)),
@@ -159,9 +180,11 @@ async function lerNotas(dbPath: string, outputDir: string): Promise<NotaListada[
   return notas;
 }
 
-// Soma em centavos para o total não carregar resíduo binário.
-function somar(notas: NotaListada[]): number {
-  return notas.reduce((centavos, nota) => centavos + Math.round((nota.valor ?? 0) * 100), 0) / 100;
+// Homologação não tem valor fiscal. Soma em centavos para o total não carregar resíduo binário.
+function fechar(notas: NotaListada[]): { total: number; quantidade: number } {
+  const fiscais = notas.filter((nota) => !nota.homologacao);
+  const centavos = fiscais.reduce((soma, nota) => soma + Math.round((nota.valor ?? 0) * 100), 0);
+  return { total: centavos / 100, quantidade: fiscais.length };
 }
 
 export async function listarCompetencias(dbPath: string, outputDir: string): Promise<CompetenciaResumo[]> {
@@ -175,13 +198,12 @@ export async function listarCompetencias(dbPath: string, outputDir: string): Pro
     .sort(([a], [b]) => b.localeCompare(a))
     .map(([competencia, notas]) => ({
       competencia,
-      total: somar(notas),
-      quantidade: notas.length,
+      ...fechar(notas),
       estimada: notas.some((nota) => nota.competenciaEstimada),
     }));
 }
 
 export async function notasDaCompetencia(dbPath: string, outputDir: string, competencia: string) {
   const notas = (await lerNotas(dbPath, outputDir)).filter((nota) => nota.competencia === competencia);
-  return { competencia, notas, total: somar(notas), quantidade: notas.length };
+  return { competencia, notas, ...fechar(notas) };
 }

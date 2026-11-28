@@ -37,7 +37,7 @@
   .razao .valor { text-align: right; white-space: nowrap; }
   .razao td:nth-child(3) { overflow-wrap: anywhere; }
   .razao tfoot th, .razao tfoot td { background: #f1f5f9; border-top: 2px solid #1a1a2e; border-bottom: 0; font-size: .9rem; font-weight: 700; color: #1a1a2e; }
-  .estimada { display: inline-block; white-space: nowrap; margin-top: .2rem; padding: .15rem .5rem; border-radius: 4px; background: #fef3c7; color: #78350f; font-size: .72rem; font-weight: 600; }
+  .estimada, .homologacao { display: inline-block; white-space: nowrap; margin-top: .2rem; padding: .15rem .5rem; border-radius: 4px; background: #fef3c7; color: #78350f; font-size: .72rem; font-weight: 600; }
   .fech-rodape { margin: .8rem 0 0; font-size: .78rem; color: #555; }
   /* Contadores */
   .contadores { display: flex; flex-wrap: wrap; gap: .6rem; margin-bottom: 1rem; }
@@ -338,10 +338,15 @@ function urlDaCompetencia(competencia) {
   return url;
 }
 
-function nomeDaCompetencia(competencia) {
-  const nome = new Date(competencia + '-15T12:00:00Z')
-    .toLocaleDateString('pt-BR', { month: 'long', year: 'numeric', timeZone: 'UTC' });
-  return nome.charAt(0).toUpperCase() + nome.slice(1);
+// Sem resumo (mês da URL fora da lista), só o mês.
+function rotuloDaCompetencia(competencia, resumo) {
+  const mes = new Date(competencia + '-15T12:00:00Z')
+    .toLocaleDateString('pt-BR', { month: 'short', timeZone: 'UTC' })
+    .replace('.', '') + '/' + competencia.slice(0, 4);
+  if (!resumo) return mes;
+  const { total, quantidade, estimada } = resumo;
+  return mes + ' · ' + brl.format(total) + ' · ' + quantidade + (quantidade === 1 ? ' nota' : ' notas') +
+    (estimada ? ' (estimada)' : '');
 }
 
 function dataDeEmissao(emitidaEm) {
@@ -395,12 +400,19 @@ function linhaDaNota(nota) {
     selo.title = 'Sem XML autorizado legível: mês da data de emissão e dados da Venda';
     emissao.append(document.createElement('br'), selo);
   }
+  const valor = celula(nota.valor == null ? '—' : brl.format(nota.valor), 'valor');
+  if (nota.homologacao) {
+    const selo = document.createElement('span');
+    selo.className = 'homologacao';
+    selo.textContent = 'homologação, fora do total';
+    valor.append(document.createElement('br'), selo);
+  }
   tr.append(
     celula(nota.nNFSe || '—', 'valor'),
     emissao,
     celula(nota.tomador || '—'),
     celula(nota.documentoMascarado || '—'),
-    celula(nota.valor == null ? '—' : brl.format(nota.valor), 'valor'),
+    valor,
   );
   return tr;
 }
@@ -436,7 +448,8 @@ async function carregarFechamento() {
     const meses = lista.map(c => c.competencia);
     if (!meses.includes(atual)) meses.push(atual);
     const seletor = document.getElementById('fech-competencia');
-    seletor.replaceChildren(...meses.sort().reverse().map(c => new Option(nomeDaCompetencia(c), c)));
+    seletor.replaceChildren(...meses.sort().reverse().map(c =>
+      new Option(rotuloDaCompetencia(c, lista.find(r => r.competencia === c)), c)));
     seletor.value = atual;
     const { anterior, proxima } = vizinhas(atual);
     document.getElementById('fech-anterior').disabled = !anterior;
@@ -444,7 +457,8 @@ async function carregarFechamento() {
 
     const mes = await buscarJson('/api/notas?competencia=' + atual);
     if (pedido !== pedidoFechamento) return;
-    if (mes.quantidade === 0) {
+    // Mês só de homologação tem quantidade 0 e ainda mostra as linhas.
+    if (mes.notas.length === 0) {
       avisoFechamento('Nenhuma Nota nesta competência.');
       return;
     }
