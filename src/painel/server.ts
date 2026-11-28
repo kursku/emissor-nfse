@@ -50,13 +50,20 @@ export const TOKEN_TTL_MS = 12 * 60 * 60 * 1000;
 export const MAX_SESSION_TOKENS = 50;
 // Reserva mais velha que isto não é emissão em curso: precisa de conciliação.
 const EMITINDO_PARADO_MS = 15 * 60 * 1000;
+// Mesmo busy timeout de store.ts: trava curta da CLI não pode derrubar a leitura.
+const ESPERA_LEITURA_MS = 5000;
 
 // --- Helper DB para consultas do painel ---
 
-function openDb(dbPath: string): DatabaseSync | null {
+function openDb(dbPath: string, timeout?: number): DatabaseSync | null {
   if (!existsSync(dbPath)) return null;
-  const db = new DatabaseSync(dbPath, { open: true });
-  db.exec('PRAGMA journal_mode=WAL;');
+  const db = new DatabaseSync(dbPath, { open: true, timeout });
+  try {
+    db.exec('PRAGMA journal_mode=WAL;');
+  } catch (err) {
+    db.close();
+    throw err;
+  }
   return db;
 }
 
@@ -379,7 +386,7 @@ export function createPainelApp(deps: PainelDependencies = {}) {
   });
 
 app.get('/api/vendas/resumo', (_req, res) => {
-  const db = openDb(dbPath);
+  const db = openDb(dbPath, ESPERA_LEITURA_MS);
   if (!db) {
     res.json({
       total: 0,
@@ -391,6 +398,7 @@ app.get('/api/vendas/resumo', (_req, res) => {
       a_verificar: 0,
       erro: 0,
       pronta: 0,
+      pronta_sem_endereco: 0,
       emitindo: 0,
       emitindoParado: 0,
       atencao: 0,
@@ -430,7 +438,8 @@ app.get('/api/vendas/resumo', (_req, res) => {
       a_verificar: contagem['a_verificar'] ?? 0,
       erro: contagem['erro'] ?? 0,
       pronta: contagem['pronta'] ?? 0,
-      atencao: ['pendente_cadastro', 'excecao', 'erro', 'a_verificar']
+      pronta_sem_endereco: contagem['pronta_sem_endereco'] ?? 0,
+      atencao: ['pendente_cadastro', 'pronta_sem_endereco', 'excecao', 'erro', 'a_verificar']
         .reduce((soma, status) => soma + (contagem[status] ?? 0), emitindoParado),
       emitindo: contagem['emitindo'] ?? 0,
       emitindoParado,
@@ -441,7 +450,7 @@ app.get('/api/vendas/resumo', (_req, res) => {
 });
 
 app.get('/api/vendas', (req, res) => {
-  const db = openDb(dbPath);
+  const db = openDb(dbPath, ESPERA_LEITURA_MS);
   if (!db) {
     res.json({ vendas: [], total: 0, page: 1, pages: 0 });
     return;

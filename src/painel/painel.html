@@ -23,6 +23,7 @@
   nav :focus-visible { outline-color: #fbbf24; }
   .atencao { display: inline-block; min-width: 1.5em; margin-left: .5rem; padding: 0 .35rem; border-radius: 9999px; background: #fbbf24; color: #171a2b; font-size: .8rem; font-weight: 700; text-align: center; }
   .atencao[hidden] { display: none; }
+  .so-leitor { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
   button, select { min-height: 24px; min-width: 24px; }
   /* Fechamento */
   .fech-topo { display: flex; justify-content: space-between; align-items: center; gap: .8rem; flex-wrap: wrap; border-bottom: 1px solid #d0d4dc; padding-bottom: .5rem; }
@@ -55,6 +56,7 @@
   .cnt-a_verificar { background: #fef3c7; border-color: #f59e0b; }
   .cnt-erro { background: #fee2e2; border-color: #f87171; }
   .cnt-pendente_cadastro { background: #fef9c3; border-color: #facc15; }
+  .cnt-pronta_sem_endereco { background: #ffedd5; border-color: #fb923c; }
   .cnt-aguardando_garantia { background: #fef3c7; border-color: #f59e0b; }
   .cnt-excecao { background: #fce7f3; border-color: #ec4899; }
   .cnt-total { background: #f1f5f9; border-color: #94a3b8; }
@@ -79,6 +81,7 @@
   .s-a_verificar { background: #fef3c7; color: #92400e; }
   .s-erro { background: #fee2e2; color: #991b1b; }
   .s-pendente_cadastro { background: #fef9c3; color: #713f12; }
+  .s-pronta_sem_endereco { background: #ffedd5; color: #9a3412; }
   .s-aguardando_garantia { background: #fef3c7; color: #78350f; }
   .s-excecao { background: #fce7f3; color: #831843; }
   .erro-inline { font-size: .75rem; color: #991b1b; white-space: pre-wrap; max-width: 200px; word-break: break-word; }
@@ -122,7 +125,7 @@
 <nav aria-label="Seções">
   <h1>Painel NFS-e</h1>
   <a href="?secao=fechamento" data-secao="fechamento">Fechamento</a>
-  <a href="?secao=vendas" data-secao="vendas">Vendas<span class="atencao" id="atencao" role="img" hidden></span></a>
+  <a href="?secao=vendas" data-secao="vendas">Vendas<span class="atencao" id="atencao" aria-hidden="true" hidden></span><span class="so-leitor" id="atencao-texto"></span></a>
   <a href="?secao=emissao-manual" data-secao="emissao-manual">Emissão manual</a>
 </nav>
 
@@ -170,6 +173,7 @@
     <button type="button" class="contador cnt-a_verificar" data-status="a_verificar" aria-pressed="false"><span class="label">A verificar</span><span class="num" id="cnt-a_verificar">--</span></button>
     <button type="button" class="contador cnt-erro" data-status="erro" aria-pressed="false"><span class="label">Erros</span><span class="num" id="cnt-erro">--</span></button>
     <button type="button" class="contador cnt-pendente_cadastro" data-status="pendente_cadastro" aria-pressed="false"><span class="label">Pend. Cadastro</span><span class="num" id="cnt-pendente_cadastro">--</span></button>
+    <button type="button" class="contador cnt-pronta_sem_endereco" data-status="pronta_sem_endereco" aria-pressed="false"><span class="label">Sem endereço</span><span class="num" id="cnt-pronta_sem_endereco">--</span></button>
     <button type="button" class="contador cnt-aguardando_garantia" data-status="aguardando_garantia" aria-pressed="false"><span class="label">Aguard. Garantia</span><span class="num" id="cnt-aguardando_garantia">--</span></button>
     <button type="button" class="contador cnt-excecao" data-status="excecao" aria-pressed="false"><span class="label">Excecao</span><span class="num" id="cnt-excecao">--</span></button>
   </div>
@@ -209,6 +213,7 @@
         <option value="a_verificar">A verificar</option>
         <option value="erro">Erro</option>
         <option value="pendente_cadastro">Pendente cadastro</option>
+        <option value="pronta_sem_endereco">Sem endereço</option>
         <option value="aguardando_garantia">Aguardando garantia</option>
         <option value="excecao">Excecao</option>
       </select>
@@ -315,7 +320,8 @@ function mostrarSecao() {
     else a.removeAttribute('aria-current');
   });
   document.querySelectorAll('section[data-secao]').forEach(s => { s.hidden = s.dataset.secao !== atual; });
-  if (atual === 'vendas') carregarResumo();
+  // A tabela volta na página e nos filtros atuais.
+  if (atual === 'vendas') { carregarResumo(); carregarVendas(); }
   // Fora do Fechamento, a resposta que chegar depois não pode mexer na URL nem pedir o mês.
   if (atual === 'fechamento') carregarFechamento();
   else pedidoFechamento++;
@@ -337,8 +343,6 @@ document.querySelectorAll('nav a[data-secao]').forEach(a => {
 const brl = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' });
 let competencias = [];
 let pedidoFechamento = 0;
-// Declarado aqui porque mostrarSecao chama carregarResumo antes do restante do script.
-let pedidoResumo = 0;
 
 function competenciaDaUrl() {
   const valor = new URLSearchParams(location.search).get('competencia') || '';
@@ -389,8 +393,8 @@ function avisoFechamento(texto) {
   aviso.hidden = !texto;
 }
 
-async function buscarJson(url) {
-  const resposta = await fetch(url);
+async function buscarJson(url, opcoes) {
+  const resposta = await fetch(url, opcoes);
   if (!resposta.ok) throw new Error(url + ' ' + resposta.status);
   return resposta.json();
 }
@@ -505,7 +509,6 @@ document.addEventListener('keydown', e => {
 });
 
 window.addEventListener('popstate', mostrarSecao);
-mostrarSecao();
 
 // --- Config ---
 let modoSimulacao = true;
@@ -540,18 +543,23 @@ fetch('/api/config').then(r => {
 function mostrarAtencao(texto, rotulo) {
   const selo = document.getElementById('atencao');
   selo.textContent = texto;
-  selo.setAttribute('aria-label', rotulo);
-  selo.title = rotulo;
+  selo.title = texto ? rotulo : '';
   selo.hidden = !texto;
+  // O número é só visual: o link se lê "Vendas (N vendas precisam de atenção)".
+  document.getElementById('atencao-texto').textContent = texto ? ' (' + rotulo + ')' : '';
 }
+
+let pedidoResumo = 0;
+// Menor que o intervalo do resumo: pedido pendurado precisa virar erro antes de o próximo descartá-lo.
+const LIMITE_LEITURA_MS = 20_000;
 
 function carregarResumo() {
   const pedido = ++pedidoResumo;
-  buscarJson('/api/vendas/resumo').then(d => {
+  buscarJson('/api/vendas/resumo', { signal: AbortSignal.timeout(LIMITE_LEITURA_MS) }).then(d => {
     if (pedido !== pedidoResumo) return;
     // Servidor antigo ainda no ar serve este HTML novo sem o campo.
     if (typeof d.atencao !== 'number') throw new Error('resumo sem atencao');
-    ['total','simulada','pronta','emitindo','emitida','a_verificar','erro','pendente_cadastro','aguardando_garantia','excecao'].forEach(k => {
+    ['total','simulada','pronta','pronta_sem_endereco','emitindo','emitida','a_verificar','erro','pendente_cadastro','aguardando_garantia','excecao'].forEach(k => {
       const el = document.getElementById('cnt-' + k);
       if (el) el.textContent = d[k] ?? 0;
     });
@@ -596,8 +604,13 @@ function carregarVendas(pg) {
   if (q) url += '&q=' + encodeURIComponent(q);
 
   const pedido = ++pedidoVendas;
-  buscarJson(url).then(d => {
+  buscarJson(url, { signal: AbortSignal.timeout(LIMITE_LEITURA_MS) }).then(d => {
     if (pedido !== pedidoVendas) return;
+    // Retry (ou a CLI) pode esvaziar a última página: volta para a última que existe.
+    if (!d.vendas.length && d.page > 1 && d.pages < d.page) {
+      carregarVendas(Math.max(1, d.pages));
+      return;
+    }
     totalPaginas = d.pages || 1;
     document.getElementById('pg-info').textContent =
       'Pagina ' + d.page + ' de ' + totalPaginas + ' (' + d.total + ' registros)';
@@ -734,9 +747,7 @@ async function doRetry(btn, idVenda) {
       body: JSON.stringify({ id_venda: idVenda }),
     });
     const j = await r.json();
-    if (j.ok) {
-      carregarVendas(paginaAtual); carregarResumo();
-    } else {
+    if (!j.ok) {
       alert(j.erro || 'Erro no retry');
       btn.disabled = false; btn.textContent = 'Retry';
     }
@@ -744,6 +755,8 @@ async function doRetry(btn, idVenda) {
     alert('Erro: ' + err.message);
     btn.disabled = false; btn.textContent = 'Retry';
   }
+  // Também na recusa: o status pode ter mudado por fora.
+  carregarVendas(paginaAtual); carregarResumo();
 }
 
 // --- Formulario de emissao manual ---
@@ -802,8 +815,13 @@ form.addEventListener('submit', async (e) => {
 });
 
 // --- Init ---
+// Venda parada passa dos 15 minutos sem nenhum clique, e a CLI muda o banco por fora.
+const INTERVALO_RESUMO_MS = 60_000;
+setInterval(() => { if (!document.hidden) carregarResumo(); }, INTERVALO_RESUMO_MS);
+document.addEventListener('visibilitychange', () => { if (!document.hidden) carregarResumo(); });
+// Aqui no fim porque entrar em Vendas usa o que o script declarou acima.
+mostrarSecao();
 carregarResumo();
-carregarVendas(1);
 </script>
 </body>
 </html>
