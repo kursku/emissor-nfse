@@ -21,6 +21,9 @@
   .vazio { padding: 2.5rem 1rem; text-align: center; color: #555; }
   :focus-visible { outline: 3px solid #2563eb; outline-offset: 2px; }
   nav :focus-visible { outline-color: #fbbf24; }
+  .atencao { display: inline-block; min-width: 1.5em; margin-left: .5rem; padding: 0 .35rem; border-radius: 9999px; background: #fbbf24; color: #171a2b; font-size: .8rem; font-weight: 700; text-align: center; }
+  .atencao[hidden] { display: none; }
+  .so-leitor { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
   button, select { min-height: 24px; min-width: 24px; }
   /* Fechamento */
   .fech-topo { display: flex; justify-content: space-between; align-items: center; gap: .8rem; flex-wrap: wrap; border-bottom: 1px solid #d0d4dc; padding-bottom: .5rem; }
@@ -41,15 +44,19 @@
   .fech-rodape { margin: .8rem 0 0; font-size: .78rem; color: #555; }
   /* Contadores */
   .contadores { display: flex; flex-wrap: wrap; gap: .6rem; margin-bottom: 1rem; }
-  .contador { border-radius: 8px; padding: .5rem .9rem; min-width: 90px; text-align: center; border: 1px solid transparent; }
-  .contador .label { font-size: .7rem; color: #555; text-transform: uppercase; letter-spacing: .04em; }
-  .contador .num { font-size: 1.5rem; font-weight: 700; }
+  .contador { border-radius: 8px; padding: .5rem .9rem; min-width: 90px; text-align: center; border: 1px solid transparent; font: inherit; color: inherit; cursor: pointer; }
+  .contador[aria-pressed="true"] { border-color: #1a1a2e; box-shadow: inset 0 0 0 2px #1a1a2e; }
+  @media (forced-colors: active) { .contador[aria-pressed="true"] { border-width: 4px; } }
+  .contador .label { display: block; font-size: .7rem; color: #555; text-transform: uppercase; letter-spacing: .04em; }
+  .contador .num { display: block; font-size: 1.5rem; font-weight: 700; }
   .cnt-simulada { background: #e0f2fe; border-color: #38bdf8; }
   .cnt-pronta { background: #dcfce7; border-color: #4ade80; }
   .cnt-emitida { background: #d1fae5; border-color: #34d399; }
+  .cnt-emitindo { background: #ede9fe; border-color: #a78bfa; }
   .cnt-a_verificar { background: #fef3c7; border-color: #f59e0b; }
   .cnt-erro { background: #fee2e2; border-color: #f87171; }
   .cnt-pendente_cadastro { background: #fef9c3; border-color: #facc15; }
+  .cnt-pronta_sem_endereco { background: #ffedd5; border-color: #fb923c; }
   .cnt-aguardando_garantia { background: #fef3c7; border-color: #f59e0b; }
   .cnt-excecao { background: #fce7f3; border-color: #ec4899; }
   .cnt-total { background: #f1f5f9; border-color: #94a3b8; }
@@ -70,9 +77,11 @@
   .s-simulada { background: #e0f2fe; color: #0369a1; }
   .s-pronta { background: #dcfce7; color: #166534; }
   .s-emitida { background: #d1fae5; color: #065f46; }
+  .s-emitindo { background: #ede9fe; color: #5b21b6; }
   .s-a_verificar { background: #fef3c7; color: #92400e; }
   .s-erro { background: #fee2e2; color: #991b1b; }
   .s-pendente_cadastro { background: #fef9c3; color: #713f12; }
+  .s-pronta_sem_endereco { background: #ffedd5; color: #9a3412; }
   .s-aguardando_garantia { background: #fef3c7; color: #78350f; }
   .s-excecao { background: #fce7f3; color: #831843; }
   .erro-inline { font-size: .75rem; color: #991b1b; white-space: pre-wrap; max-width: 200px; word-break: break-word; }
@@ -116,7 +125,7 @@
 <nav aria-label="Seções">
   <h1>Painel NFS-e</h1>
   <a href="?secao=fechamento" data-secao="fechamento">Fechamento</a>
-  <a href="?secao=vendas" data-secao="vendas">Vendas</a>
+  <a href="?secao=vendas" data-secao="vendas">Vendas<span class="atencao" id="atencao" aria-hidden="true" hidden></span><span class="so-leitor" id="atencao-texto"></span></a>
   <a href="?secao=emissao-manual" data-secao="emissao-manual">Emissão manual</a>
 </nav>
 
@@ -155,16 +164,18 @@
 <section class="painel-secao" data-secao="vendas" aria-label="Vendas" hidden>
 
   <h2>Resumo</h2>
-  <div class="contadores" id="contadores">
-    <div class="contador cnt-total"><div class="label">Total</div><div class="num" id="cnt-total">--</div></div>
-    <div class="contador cnt-simulada"><div class="label">Simuladas</div><div class="num" id="cnt-simulada">--</div></div>
-    <div class="contador cnt-pronta"><div class="label">Prontas</div><div class="num" id="cnt-pronta">--</div></div>
-    <div class="contador cnt-emitida"><div class="label">Emitidas</div><div class="num" id="cnt-emitida">--</div></div>
-    <div class="contador cnt-a_verificar"><div class="label">A verificar</div><div class="num" id="cnt-a_verificar">--</div></div>
-    <div class="contador cnt-erro"><div class="label">Erros</div><div class="num" id="cnt-erro">--</div></div>
-    <div class="contador cnt-pendente_cadastro"><div class="label">Pend. Cadastro</div><div class="num" id="cnt-pendente_cadastro">--</div></div>
-    <div class="contador cnt-aguardando_garantia"><div class="label">Aguard. Garantia</div><div class="num" id="cnt-aguardando_garantia">--</div></div>
-    <div class="contador cnt-excecao"><div class="label">Excecao</div><div class="num" id="cnt-excecao">--</div></div>
+  <div class="contadores" id="contadores" role="group" aria-label="Filtrar vendas por status">
+    <button type="button" class="contador cnt-total" data-status="" aria-pressed="true"><span class="label">Total</span><span class="num" id="cnt-total">--</span></button>
+    <button type="button" class="contador cnt-simulada" data-status="simulada" aria-pressed="false"><span class="label">Simuladas</span><span class="num" id="cnt-simulada">--</span></button>
+    <button type="button" class="contador cnt-pronta" data-status="pronta" aria-pressed="false"><span class="label">Prontas</span><span class="num" id="cnt-pronta">--</span></button>
+    <button type="button" class="contador cnt-emitindo" data-status="emitindo" aria-pressed="false"><span class="label">Emitindo</span><span class="num" id="cnt-emitindo">--</span></button>
+    <button type="button" class="contador cnt-emitida" data-status="emitida" aria-pressed="false"><span class="label">Emitidas</span><span class="num" id="cnt-emitida">--</span></button>
+    <button type="button" class="contador cnt-a_verificar" data-status="a_verificar" aria-pressed="false"><span class="label">A verificar</span><span class="num" id="cnt-a_verificar">--</span></button>
+    <button type="button" class="contador cnt-erro" data-status="erro" aria-pressed="false"><span class="label">Erros</span><span class="num" id="cnt-erro">--</span></button>
+    <button type="button" class="contador cnt-pendente_cadastro" data-status="pendente_cadastro" aria-pressed="false"><span class="label">Pend. Cadastro</span><span class="num" id="cnt-pendente_cadastro">--</span></button>
+    <button type="button" class="contador cnt-pronta_sem_endereco" data-status="pronta_sem_endereco" aria-pressed="false"><span class="label">Sem endereço</span><span class="num" id="cnt-pronta_sem_endereco">--</span></button>
+    <button type="button" class="contador cnt-aguardando_garantia" data-status="aguardando_garantia" aria-pressed="false"><span class="label">Aguard. Garantia</span><span class="num" id="cnt-aguardando_garantia">--</span></button>
+    <button type="button" class="contador cnt-excecao" data-status="excecao" aria-pressed="false"><span class="label">Excecao</span><span class="num" id="cnt-excecao">--</span></button>
   </div>
 
   <h2>Acoes</h2>
@@ -197,10 +208,12 @@
         <option value="">-- todos --</option>
         <option value="simulada">Simulada</option>
         <option value="pronta">Pronta</option>
+        <option value="emitindo">Emitindo</option>
         <option value="emitida">Emitida</option>
         <option value="a_verificar">A verificar</option>
         <option value="erro">Erro</option>
         <option value="pendente_cadastro">Pendente cadastro</option>
+        <option value="pronta_sem_endereco">Sem endereço</option>
         <option value="aguardando_garantia">Aguardando garantia</option>
         <option value="excecao">Excecao</option>
       </select>
@@ -209,7 +222,7 @@
       <label style="margin:0;font-size:.78rem">Busca (nome/email)</label>
       <input type="text" id="filtro-q" placeholder="Buscar..." oninput="clearTimeout(window._qt);window._qt=setTimeout(()=>carregarVendas(1),300)">
     </div>
-    <button onclick="carregarVendas(1)">Atualizar</button>
+    <button onclick="carregarResumo(); carregarVendas(1)">Atualizar</button>
   </div>
 
   <div id="tabela-container">
@@ -307,6 +320,8 @@ function mostrarSecao() {
     else a.removeAttribute('aria-current');
   });
   document.querySelectorAll('section[data-secao]').forEach(s => { s.hidden = s.dataset.secao !== atual; });
+  // A tabela volta na página e nos filtros atuais.
+  if (atual === 'vendas') { carregarResumo(); carregarVendas(); }
   // Fora do Fechamento, a resposta que chegar depois não pode mexer na URL nem pedir o mês.
   if (atual === 'fechamento') carregarFechamento();
   else pedidoFechamento++;
@@ -378,8 +393,8 @@ function avisoFechamento(texto) {
   aviso.hidden = !texto;
 }
 
-async function buscarJson(url) {
-  const resposta = await fetch(url);
+async function buscarJson(url, opcoes) {
+  const resposta = await fetch(url, opcoes);
   if (!resposta.ok) throw new Error(url + ' ' + resposta.status);
   return resposta.json();
 }
@@ -494,7 +509,6 @@ document.addEventListener('keydown', e => {
 });
 
 window.addEventListener('popstate', mostrarSecao);
-mostrarSecao();
 
 // --- Config ---
 let modoSimulacao = true;
@@ -526,18 +540,54 @@ fetch('/api/config').then(r => {
 });
 
 // --- Contadores ---
+function mostrarAtencao(texto, rotulo) {
+  const selo = document.getElementById('atencao');
+  selo.textContent = texto;
+  selo.title = texto ? rotulo : '';
+  selo.hidden = !texto;
+  // O número é só visual: o link se lê "Vendas (N vendas precisam de atenção)".
+  document.getElementById('atencao-texto').textContent = texto ? ' (' + rotulo + ')' : '';
+}
+
+let pedidoResumo = 0;
+// Menor que o intervalo do resumo: pedido pendurado precisa virar erro antes de o próximo descartá-lo.
+const LIMITE_LEITURA_MS = 20_000;
+
 function carregarResumo() {
-  fetch('/api/vendas/resumo').then(r => r.json()).then(d => {
-    ['total','simulada','pronta','emitida','a_verificar','erro','pendente_cadastro','aguardando_garantia','excecao'].forEach(k => {
+  const pedido = ++pedidoResumo;
+  buscarJson('/api/vendas/resumo', { signal: AbortSignal.timeout(LIMITE_LEITURA_MS) }).then(d => {
+    if (pedido !== pedidoResumo) return;
+    // Servidor antigo ainda no ar serve este HTML novo sem o campo.
+    if (typeof d.atencao !== 'number') throw new Error('resumo sem atencao');
+    ['total','simulada','pronta','pronta_sem_endereco','emitindo','emitida','a_verificar','erro','pendente_cadastro','aguardando_garantia','excecao'].forEach(k => {
       const el = document.getElementById('cnt-' + k);
       if (el) el.textContent = d[k] ?? 0;
     });
+    const n = d.atencao;
+    mostrarAtencao(n ? String(n) : '', n + (n === 1 ? ' venda precisa' : ' vendas precisam') + ' de atenção');
+  }).catch(erro => {
+    // Selo escondido significa fila limpa: falha de leitura não pode parecer isso.
+    console.error(erro);
+    if (pedido !== pedidoResumo) return;
+    mostrarAtencao('?', 'Não foi possível ler o resumo das vendas');
+    document.querySelectorAll('#contadores .num').forEach(el => { el.textContent = '--'; });
   });
 }
+
+// O select é a fonte do filtro; a faixa só o reflete e o altera.
+const filtroStatus = document.getElementById('filtro-status');
+const botoesStatus = document.querySelectorAll('#contadores button');
+botoesStatus.forEach(botao => {
+  botao.addEventListener('click', () => {
+    filtroStatus.value = botao.dataset.status === filtroStatus.value ? '' : botao.dataset.status;
+    carregarVendas(1);
+  });
+});
 
 // --- Tabela de vendas ---
 let paginaAtual = 1;
 let totalPaginas = 1;
+let pedidoVendas = 0;
 
 function badgeStatus(s) {
   const status = s || '';
@@ -546,13 +596,21 @@ function badgeStatus(s) {
 
 function carregarVendas(pg) {
   paginaAtual = pg || paginaAtual;
-  const status = document.getElementById('filtro-status').value;
+  const status = filtroStatus.value;
+  botoesStatus.forEach(b => b.setAttribute('aria-pressed', String(b.dataset.status === status)));
   const q = document.getElementById('filtro-q').value;
   let url = '/api/vendas?page=' + paginaAtual;
   if (status) url += '&status=' + encodeURIComponent(status);
   if (q) url += '&q=' + encodeURIComponent(q);
 
-  fetch(url).then(r => r.json()).then(d => {
+  const pedido = ++pedidoVendas;
+  buscarJson(url, { signal: AbortSignal.timeout(LIMITE_LEITURA_MS) }).then(d => {
+    if (pedido !== pedidoVendas) return;
+    // Retry (ou a CLI) pode esvaziar a última página: volta para a última que existe.
+    if (!d.vendas.length && d.page > 1 && d.pages < d.page) {
+      carregarVendas(Math.max(1, d.pages));
+      return;
+    }
     totalPaginas = d.pages || 1;
     document.getElementById('pg-info').textContent =
       'Pagina ' + d.page + ' de ' + totalPaginas + ' (' + d.total + ' registros)';
@@ -590,6 +648,15 @@ function carregarVendas(pg) {
     tbody.querySelectorAll('.btn-retry').forEach(btn => {
       btn.addEventListener('click', () => doRetry(btn, btn.dataset.idVenda || ''));
     });
+  }).catch(erro => {
+    console.error(erro);
+    if (pedido !== pedidoVendas) return;
+    // As linhas do filtro anterior não podem ficar sob o contador recém-marcado.
+    document.getElementById('tabela-body').innerHTML =
+      '<tr><td colspan="7" style="text-align:center;color:#991b1b;padding:1.5rem">Não foi possível ler as vendas. Clique em Atualizar e confira o terminal do painel.</td></tr>';
+    document.getElementById('pg-info').textContent = '';
+    document.getElementById('pg-prev').disabled = true;
+    document.getElementById('pg-next').disabled = true;
   });
 }
 
@@ -680,9 +747,7 @@ async function doRetry(btn, idVenda) {
       body: JSON.stringify({ id_venda: idVenda }),
     });
     const j = await r.json();
-    if (j.ok) {
-      carregarVendas(paginaAtual); carregarResumo();
-    } else {
+    if (!j.ok) {
       alert(j.erro || 'Erro no retry');
       btn.disabled = false; btn.textContent = 'Retry';
     }
@@ -690,6 +755,8 @@ async function doRetry(btn, idVenda) {
     alert('Erro: ' + err.message);
     btn.disabled = false; btn.textContent = 'Retry';
   }
+  // Também na recusa: o status pode ter mudado por fora.
+  carregarVendas(paginaAtual); carregarResumo();
 }
 
 // --- Formulario de emissao manual ---
@@ -742,12 +809,19 @@ form.addEventListener('submit', async (e) => {
     out.textContent = 'Falha de comunicacao: ' + err.message;
   } finally {
     btn.disabled = modoSimulacao; btn.textContent = 'Emitir NFS-e (producao real)';
+    // A emissão pode deixar a venda em erro ou a_verificar: o selo precisa mostrar.
+    carregarResumo();
   }
 });
 
 // --- Init ---
+// Venda parada passa dos 15 minutos sem nenhum clique, e a CLI muda o banco por fora.
+const INTERVALO_RESUMO_MS = 60_000;
+setInterval(() => { if (!document.hidden) carregarResumo(); }, INTERVALO_RESUMO_MS);
+document.addEventListener('visibilitychange', () => { if (!document.hidden) carregarResumo(); });
+// Aqui no fim porque entrar em Vendas usa o que o script declarou acima.
+mostrarSecao();
 carregarResumo();
-carregarVendas(1);
 </script>
 </body>
 </html>

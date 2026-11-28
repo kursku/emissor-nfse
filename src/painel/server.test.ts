@@ -4,7 +4,8 @@
  * completo). Testado via mascara.ts diretamente para manter este teste puro.
  */
 import { createServer, request as httpRequest, type Server } from "node:http";
-import { spawnSync } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
+import { once } from "node:events";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { mkdtemp, rm } from "node:fs/promises";
 import { join } from "node:path";
@@ -894,6 +895,111 @@ test("painel serve a moldura com as tres secoes para qualquer ?secao=", async ()
       }
     }
   });
+});
+
+test("resumo soma em atencao so os status que esperam o operador", async () => {
+  await comPainel({}, async (base) => {
+    const resumo = async () => (await (await fetch(`${base}/api/vendas/resumo`)).json());
+    assert.equal((await resumo()).atencao, 0);
+
+    // Quantidades distintas: esquecer ou incluir um status a mais muda a soma.
+    const mistura = [
+      ["pendente_cadastro", 2], ["excecao", 3], ["erro", 4], ["a_verificar", 5],
+      ["emitida", 6], ["pronta", 7], ["simulada", 8], ["aguardando_garantia", 9],
+      ["pronta_sem_endereco", 10],
+    ] as const;
+    for (const [status, quantas] of mistura) {
+      for (let i = 0; i < quantas; i++) upsertVenda({ id_venda: `${status}-${i}`, status });
+    }
+
+    // pendente é a fila normal: entra no total e não pede atenção.
+    for (let i = 0; i < 11; i++) upsertVenda({ id_venda: `pendente-${i}`, status: "pendente" });
+
+    const depois = await resumo();
+    assert.equal(depois.atencao, 24);
+    assert.equal(depois.total, 65);
+    // Cada contador da faixa filtra a tabela: a lista precisa bater com o número.
+    for (const [status, quantas] of mistura) {
+      const lista = await (await fetch(`${base}/api/vendas?status=${status}`)).json();
+      assert.equal(depois[status], quantas, status);
+      assert.equal(lista.total, quantas, status);
+      assert.ok(lista.vendas.every((venda: { status: string }) => venda.status === status), status);
+    }
+  });
+});
+
+test("atencao conta emitindo só quando parada há mais de 15 minutos", async () => {
+  const root = await mkdtemp(join(tmpdir(), "nfse-parada-"));
+  const dbPath = join(root, "emissor.db");
+  try {
+    await comPainel({ dbPath }, async (base) => {
+      const resumo = async () => {
+        const r = await (await fetch(`${base}/api/vendas/resumo`)).json();
+        return [r.emitindo, r.emitindoParado, r.atencao, r.total];
+      };
+      upsertVenda({ id_venda: "reservada", fila: "pronta", status: "pronta" });
+      assert.ok(reservarEmissao("reservada", root));
+      upsertVenda({ id_venda: "sem-tentativa", status: "emitindo" });
+      upsertVenda({ id_venda: "sem-status" });
+      assert.deepEqual(await resumo(), [2, 0, 0, 3]);
+
+      const haVinteMinutos = new Date(Date.now() - 20 * 60 * 1000).toISOString();
+      initDb(dbPath).prepare("UPDATE tentativas_emissao SET atualizada_em = ?").run(haVinteMinutos);
+      assert.deepEqual(await resumo(), [2, 1, 1, 3]);
+
+      // Reimportar mexe em vendas.atualizada_em, mas a reserva continua parada.
+      upsertVenda({ id_venda: "reservada", fila: "pronta", status: "pronta" });
+      assert.deepEqual(await resumo(), [2, 1, 1, 3]);
+
+      initDb(dbPath).prepare("UPDATE vendas SET atualizada_em = ? WHERE id_venda = 'sem-tentativa'").run(haVinteMinutos);
+      assert.deepEqual(await resumo(), [2, 2, 2, 3]);
+    });
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("resumo sem banco devolve atencao zero", async () => {
+  const root = await mkdtemp(join(tmpdir(), "nfse-sem-banco-"));
+  const dbPath = join(root, "emissor.db");
+  try {
+    await comPainel({ dbPath }, async (base) => {
+      initDb(":memory:"); // solta o arquivo para poder apagar
+      await rm(dbPath);
+      const resumo = await (await fetch(`${base}/api/vendas/resumo`)).json();
+      assert.deepEqual([resumo.atencao, resumo.emitindo, resumo.emitindoParado, resumo.total], [0, 0, 0, 0]);
+    });
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("resumo espera um escritor soltar o banco em vez de falhar", async () => {
+  const root = await mkdtemp(join(tmpdir(), "nfse-trava-"));
+  const dbPath = join(root, "emissor.db");
+  try {
+    await comPainel({ dbPath }, async (base) => {
+      initDb(":memory:"); // a trava exclusiva exige que ninguém mais esteja com o banco aberto
+      // Outro processo, porque o painel espera a trava de forma síncrona.
+      const escritor = spawn(process.execPath, ["--input-type=module", "--eval", `
+        import { DatabaseSync } from "node:sqlite";
+        const db = new DatabaseSync(${JSON.stringify(dbPath)});
+        db.exec("PRAGMA locking_mode=EXCLUSIVE; BEGIN EXCLUSIVE; UPDATE vendas SET status = status; COMMIT;");
+        console.log("travado");
+        setTimeout(() => db.close(), 800);
+      `], { stdio: ["ignore", "pipe", "inherit"] });
+      const saiu = once(escritor, "exit");
+      await Promise.race([
+        once(escritor.stdout!, "data"),
+        saiu.then(([codigo]) => { throw new Error(`escritor saiu antes de travar: ${codigo}`); }),
+      ]);
+      const { status } = await fetch(`${base}/api/vendas/resumo`);
+      await saiu;
+      assert.equal(status, 200);
+    });
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
 });
 
 test("createPainelApp aceita outputDir injetado", async () => {
