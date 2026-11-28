@@ -389,6 +389,7 @@ app.get('/api/vendas/resumo', (_req, res) => {
       a_verificar: 0,
       erro: 0,
       pronta: 0,
+      atencao: 0,
     });
     return;
   }
@@ -414,6 +415,8 @@ app.get('/api/vendas/resumo', (_req, res) => {
       a_verificar: contagem['a_verificar'] ?? 0,
       erro: contagem['erro'] ?? 0,
       pronta: contagem['pronta'] ?? 0,
+      atencao: ['pendente_cadastro', 'excecao', 'erro', 'a_verificar']
+        .reduce((soma, status) => soma + (contagem[status] ?? 0), 0),
     });
   } finally {
     db.close();

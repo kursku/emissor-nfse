@@ -896,6 +896,33 @@ test("painel serve a moldura com as tres secoes para qualquer ?secao=", async ()
   });
 });
 
+test("resumo soma em atencao so pendente_cadastro, excecao, erro e a_verificar", async () => {
+  await comPainel({}, async (base) => {
+    const resumo = async () => (await (await fetch(`${base}/api/vendas/resumo`)).json());
+    assert.equal((await resumo()).atencao, 0);
+
+    // Quantidades distintas: esquecer ou incluir um status a mais muda a soma.
+    const mistura = [
+      ["pendente_cadastro", 2], ["excecao", 3], ["erro", 4], ["a_verificar", 5],
+      ["emitida", 6], ["pronta", 7], ["simulada", 8], ["aguardando_garantia", 9],
+    ] as const;
+    for (const [status, quantas] of mistura) {
+      for (let i = 0; i < quantas; i++) upsertVenda({ id_venda: `${status}-${i}`, status });
+    }
+
+    const depois = await resumo();
+    assert.equal(depois.atencao, 14);
+    assert.equal(depois.total, 44);
+    // Cada contador da faixa filtra a tabela: a lista precisa bater com o número.
+    for (const [status, quantas] of mistura) {
+      const lista = await (await fetch(`${base}/api/vendas?status=${status}`)).json();
+      assert.equal(depois[status], quantas, status);
+      assert.equal(lista.total, quantas, status);
+      assert.ok(lista.vendas.every((venda: { status: string }) => venda.status === status), status);
+    }
+  });
+});
+
 test("createPainelApp aceita outputDir injetado", async () => {
   const outputDir = await mkdtemp(join(tmpdir(), "nfse-saida-"));
   try {
