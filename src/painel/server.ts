@@ -48,6 +48,8 @@ export const PAINEL_TOKEN_HEADER = 'X-Painel-Token';
 export const IMPORT_DIR = join(ROOT, 'importacoes');
 export const TOKEN_TTL_MS = 12 * 60 * 60 * 1000;
 export const MAX_SESSION_TOKENS = 50;
+// Reserva mais velha que isto não é emissão em curso: precisa de conciliação.
+const EMITINDO_PARADO_MS = 15 * 60 * 1000;
 
 // --- Helper DB para consultas do painel ---
 
@@ -389,11 +391,15 @@ app.get('/api/vendas/resumo', (_req, res) => {
       a_verificar: 0,
       erro: 0,
       pronta: 0,
+      emitindo: 0,
+      emitindoParado: 0,
       atencao: 0,
     });
     return;
   }
   try {
+    // As duas contagens precisam ver o mesmo instante do banco; db.close() encerra a transação.
+    db.exec('BEGIN');
     const rows = db
       .prepare('SELECT status, COUNT(*) as n FROM vendas GROUP BY status')
       .all() as Array<{ status: string; n: number }>;
@@ -404,6 +410,15 @@ app.get('/api/vendas/resumo', (_req, res) => {
       contagem[r.status] = r.n;
       total += r.n;
     }
+
+    // A hora da reserva vem da tentativa: reimportar a Venda renova vendas.atualizada_em. Sem hora, conta como parada.
+    const { n: emitindoParado } = db
+      .prepare(
+        `SELECT COUNT(*) as n FROM vendas v WHERE v.status = 'emitindo' AND COALESCE(
+           (SELECT MAX(t.atualizada_em) FROM tentativas_emissao t WHERE t.id_venda = v.id_venda AND t.estado = 'reservada'),
+           v.atualizada_em, '') < ?`,
+      )
+      .get(new Date(now() - EMITINDO_PARADO_MS).toISOString()) as { n: number };
 
     res.json({
       total,
@@ -416,7 +431,9 @@ app.get('/api/vendas/resumo', (_req, res) => {
       erro: contagem['erro'] ?? 0,
       pronta: contagem['pronta'] ?? 0,
       atencao: ['pendente_cadastro', 'excecao', 'erro', 'a_verificar']
-        .reduce((soma, status) => soma + (contagem[status] ?? 0), 0),
+        .reduce((soma, status) => soma + (contagem[status] ?? 0), emitindoParado),
+      emitindo: contagem['emitindo'] ?? 0,
+      emitindoParado,
     });
   } finally {
     db.close();

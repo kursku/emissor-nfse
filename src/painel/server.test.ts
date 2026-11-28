@@ -923,6 +923,52 @@ test("resumo soma em atencao so pendente_cadastro, excecao, erro e a_verificar",
   });
 });
 
+test("atencao conta emitindo só quando parada há mais de 15 minutos", async () => {
+  const root = await mkdtemp(join(tmpdir(), "nfse-parada-"));
+  const dbPath = join(root, "emissor.db");
+  try {
+    await comPainel({ dbPath }, async (base) => {
+      const resumo = async () => {
+        const r = await (await fetch(`${base}/api/vendas/resumo`)).json();
+        return [r.emitindo, r.emitindoParado, r.atencao, r.total];
+      };
+      upsertVenda({ id_venda: "reservada", fila: "pronta", status: "pronta" });
+      assert.ok(reservarEmissao("reservada", root));
+      upsertVenda({ id_venda: "sem-tentativa", status: "emitindo" });
+      upsertVenda({ id_venda: "sem-status" });
+      assert.deepEqual(await resumo(), [2, 0, 0, 3]);
+
+      const haVinteMinutos = new Date(Date.now() - 20 * 60 * 1000).toISOString();
+      initDb(dbPath).prepare("UPDATE tentativas_emissao SET atualizada_em = ?").run(haVinteMinutos);
+      assert.deepEqual(await resumo(), [2, 1, 1, 3]);
+
+      // Reimportar mexe em vendas.atualizada_em, mas a reserva continua parada.
+      upsertVenda({ id_venda: "reservada", fila: "pronta", status: "pronta" });
+      assert.deepEqual(await resumo(), [2, 1, 1, 3]);
+
+      initDb(dbPath).prepare("UPDATE vendas SET atualizada_em = ? WHERE id_venda = 'sem-tentativa'").run(haVinteMinutos);
+      assert.deepEqual(await resumo(), [2, 2, 2, 3]);
+    });
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("resumo sem banco devolve atencao zero", async () => {
+  const root = await mkdtemp(join(tmpdir(), "nfse-sem-banco-"));
+  const dbPath = join(root, "emissor.db");
+  try {
+    await comPainel({ dbPath }, async (base) => {
+      initDb(":memory:"); // solta o arquivo para poder apagar
+      await rm(dbPath);
+      const resumo = await (await fetch(`${base}/api/vendas/resumo`)).json();
+      assert.deepEqual([resumo.atencao, resumo.emitindo, resumo.emitindoParado, resumo.total], [0, 0, 0, 0]);
+    });
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test("createPainelApp aceita outputDir injetado", async () => {
   const outputDir = await mkdtemp(join(tmpdir(), "nfse-saida-"));
   try {
