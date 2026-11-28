@@ -2,7 +2,7 @@
  * Modelo de leitura das Notas: registro do banco + Venda + XML autorizado local.
  * Só lê: abre o banco como somente leitura e não grava arquivo.
  */
-import { existsSync } from 'node:fs';
+import { existsSync, statSync } from 'node:fs';
 import { readFile, stat } from 'node:fs/promises';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
@@ -70,7 +70,7 @@ async function nomeDoTomador(xml: string): Promise<string | null> {
 async function lerCamposDoXml(xml: string, chave: string): Promise<CamposDoXml> {
   const dados = await parseDanfse(xml);
   if (dados.chaveAcesso !== chave) throw new Error('chave do XML diverge da Nota');
-  const data = /^\d{2}\/(\d{2})\/(\d{4})$/.exec(dados.dCompet);
+  const data = /^\d{2}\/(0[1-9]|1[0-2])\/(\d{4})$/.exec(dados.dCompet);
   if (!data) throw new Error('dCompet ausente ou inválida');
   return {
     nNFSe: dados.nNFSe,
@@ -108,11 +108,48 @@ async function lerXmlAutorizado(caminho: string, versao: string, chave: string):
   return campos;
 }
 
-function mesDeEmissao(data: string | null): string | null {
+// Só ISO: data pura, ou data e hora com Z ou offset. Outro formato não se adivinha.
+const DATA_ISO = /^(\d{4})-(\d{2})-(\d{2})(T\d{2}:\d{2}(:\d{2}(\.\d+)?)?(Z|[+-]\d{2}:\d{2}))?$/;
+
+function mesDeEmissao(data: string | null, coluna: 'emitida_em' | 'data_venda', ndps: number): string | null {
   if (!data) return null;
-  if (/^\d{4}-\d{2}-\d{2}$/.test(data)) return data.slice(0, 7);
-  const instante = new Date(data);
-  return Number.isNaN(instante.getTime()) ? null : momentoSP(instante).dCompet.slice(0, 7);
+  const partes = DATA_ISO.exec(data);
+  if (partes) {
+    const [, ano, mes, dia, hora] = partes;
+    // Date.UTC rola 30/02 para março: a data só é real se sobreviver à conversão.
+    const real = new Date(Date.UTC(+ano, +mes - 1, +dia)).toISOString().startsWith(`${ano}-${mes}-${dia}`);
+    const instante = new Date(data);
+    if (real && !Number.isNaN(instante.getTime())) {
+      return hora ? momentoSP(instante).dCompet.slice(0, 7) : `${ano}-${mes}`;
+    }
+  }
+  console.warn(`[notas] ${coluna} ilegível, ignorada, nDPS ${ndps}`);
+  return null;
+}
+
+/** Arredonda uma vez, para a linha e o total saírem do mesmo número. Sem número utilizável: null. */
+function valorDaVenda(valor: unknown, ndps: number): number | null {
+  if (valor === null) return null;
+  // A coluna é REAL, mas o SQLite aceita texto e infinito.
+  if (typeof valor === 'number' && Number.isFinite(valor)) {
+    // Resíduo de ponto flutuante: o parser não lê notação exponencial.
+    if (Math.abs(valor) < 0.005) return 0;
+    try {
+      return Math.sign(valor) * parseValorMonetario(Math.abs(valor));
+    } catch {
+      // Grande demais para centavos: avisa abaixo.
+    }
+  }
+  console.warn(`[notas] valor da Venda inutilizável, nDPS ${ndps}`);
+  return null;
+}
+
+function ehArquivo(caminho: string): boolean {
+  try {
+    return statSync(caminho).isFile();
+  } catch {
+    return false;
+  }
 }
 
 async function montarNota(registro: Registro, outputDir: string): Promise<NotaListada | null> {
@@ -124,17 +161,19 @@ async function montarNota(registro: Registro, outputDir: string): Promise<NotaLi
   if (chaveOk) {
     try {
       const caminho = join(outputDir, 'autorizacao', `${chave}.xml`);
-      const { mtimeMs, size } = await stat(caminho);
+      const info = await stat(caminho);
+      if (!info.isFile()) throw new Error('o caminho do XML não é um arquivo');
       temXml = true;
-      doXml = await lerXmlAutorizado(caminho, `${mtimeMs}:${size}`, chave);
+      doXml = await lerXmlAutorizado(caminho, `${info.mtimeMs}:${info.size}`, chave);
     } catch (err: unknown) {
       if ((err as NodeJS.ErrnoException).code !== 'ENOENT') avisar('XML não usado', chave, err);
     }
   }
 
+  const mesDaNota = mesDeEmissao(registro.emitida_em, 'emitida_em', registro.ndps);
   const competencia = doXml?.competencia
-    ?? mesDeEmissao(registro.emitida_em)
-    ?? mesDeEmissao(registro.data_venda);
+    ?? mesDaNota
+    ?? mesDeEmissao(registro.data_venda, 'data_venda', registro.ndps);
   if (!competencia) {
     console.warn(`[notas] Nota sem data legível fora do Fechamento, nDPS ${registro.ndps}`);
     return null;
@@ -144,24 +183,25 @@ async function montarNota(registro: Registro, outputDir: string): Promise<NotaLi
     nNFSe: doXml?.nNFSe ?? null,
     ndps: registro.ndps,
     chave,
-    emitidaEm: registro.emitida_em,
+    // Data recusada não vai para a tela, que a formataria como se valesse.
+    emitidaEm: mesDaNota ? registro.emitida_em : null,
     competencia,
     competenciaEstimada: !doXml,
     tomador: doXml ? doXml.tomador : registro.nome,
     documentoMascarado: doXml ? doXml.documentoMascarado : mascaraDoc(registro.cpf_cnpj),
-    // A coluna é REAL, mas o SQLite aceita texto: não pode virar NaN no total.
-    valor: doXml ? doXml.valor : (typeof registro.valor === 'number' ? registro.valor : null),
+    valor: doXml ? doXml.valor : valorDaVenda(registro.valor, registro.ndps),
     // Sem XML não há como saber o ambiente.
     homologacao: doXml?.homologacao ?? false,
     idVenda: registro.id_venda,
     temXml,
-    temPdf: chaveOk && existsSync(join(outputDir, `danfse-${chave}.pdf`)),
+    temPdf: chaveOk && ehArquivo(join(outputDir, `danfse-${chave}.pdf`)),
   };
 }
 
 async function lerNotas(dbPath: string, outputDir: string): Promise<NotaListada[]> {
   if (!existsSync(dbPath)) return [];
-  const db = new DatabaseSync(dbPath, { readOnly: true });
+  // Mesma espera do store.ts: uma trava curta de quem grava não vira erro.
+  const db = new DatabaseSync(dbPath, { readOnly: true, timeout: 5000 });
   let registros: Registro[];
   try {
     registros = db.prepare(`

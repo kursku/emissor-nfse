@@ -8,8 +8,10 @@ import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { once } from "node:events";
 import { DatabaseSync } from "node:sqlite";
 import { fileURLToPath } from "node:url";
+import { Worker } from "node:worker_threads";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
@@ -508,6 +510,161 @@ test("a opção do seletor mostra mês, total e quantidade da competência", () 
     "mai/2026 · R$\u00a00,50 · 1 nota (estimada)",
   );
   assert.equal(rotulo("2020-01", undefined), "jan/2020");
+});
+
+async function comAvisos(usar: () => Promise<void>): Promise<string[]> {
+  const originalWarn = console.warn;
+  const avisos: string[] = [];
+  console.warn = (mensagem: string) => { avisos.push(mensagem); };
+  try {
+    await usar();
+  } finally {
+    console.warn = originalWarn;
+  }
+  return avisos;
+}
+
+test("data que não é ISO real nunca vira competência nem é adivinhada", async () => {
+  await comNotas(
+    async ({ base }) => {
+      const avisos = await comAvisos(async () => {
+        assert.deepEqual((await json(`${base}/api/notas/competencias`)).body, [
+          { competencia: "2026-07", total: 60, quantidade: 3, estimada: true },
+        ]);
+      });
+
+      // Sem nenhuma data legível: fora da tela, com aviso.
+      assert.ok(avisos.some((aviso) => aviso.includes("fora do Fechamento, nDPS 1")), "mês 25 e 13");
+      assert.ok(avisos.some((aviso) => aviso.includes("fora do Fechamento, nDPS 3")), "data com espaços");
+      // Caiu para a data da Venda, mas a data recusada é avisada.
+      assert.ok(avisos.some((aviso) => aviso.includes("emitida_em ilegível") && aviso.includes("nDPS 2")), "DD/MM/AAAA");
+      assert.ok(avisos.some((aviso) => aviso.includes("data_venda ilegível") && aviso.includes("nDPS 3")), "30/02");
+      assert.ok(avisos.some((aviso) => aviso.includes("fora do Fechamento, nDPS 6")), "hora sem fuso");
+      assert.ok(avisos.some((aviso) => aviso.includes("fora do Fechamento, nDPS 7")), "hora 25");
+
+      // Data recusada não chega à tela, para não ser exibida como se valesse.
+      const { body } = await json(`${base}/api/notas?competencia=2026-07`);
+      assert.deepEqual(
+        body.notas.map((n: any) => [n.ndps, n.emitidaEm]),
+        [
+          [5, "2026-07-04T15:00:00Z"],
+          [4, "2026-07-31T23:00:00-03:00"],
+          [2, null],
+        ],
+      );
+      assert.ok(avisos.some((aviso) => aviso.includes("dCompet") && aviso.includes(CHAVE_E)), "mês 13 no XML");
+    },
+    async (dbPath, outputDir) => {
+      initDb(dbPath);
+      upsertVenda({ id_venda: "venda-mes", valor: 1, data_venda: "2026-25-09", status: "emitida" });
+      registrarNota({ chave_acesso: CHAVE_A, ndps: 1, id_venda: "venda-mes", emitida_em: "2026-13-01" });
+      upsertVenda({ id_venda: "venda-br", valor: 10, data_venda: "2026-07-02", status: "emitida" });
+      registrarNota({ chave_acesso: CHAVE_B, ndps: 2, id_venda: "venda-br", emitida_em: "30/09/2026" });
+      upsertVenda({ id_venda: "venda-espacos", valor: 1, data_venda: "2026-02-30", status: "emitida" });
+      registrarNota({ chave_acesso: CHAVE_C, ndps: 3, id_venda: "venda-espacos", emitida_em: " 2026-07-01 " });
+      upsertVenda({ id_venda: "venda-offset", valor: 20, status: "emitida" });
+      registrarNota({ chave_acesso: CHAVE_D, ndps: 4, id_venda: "venda-offset", emitida_em: "2026-07-31T23:00:00-03:00" });
+      registrarNota({ chave_acesso: "6".repeat(50), ndps: 6, emitida_em: "2026-07-01T10:00:00" });
+      registrarNota({ chave_acesso: "7".repeat(50), ndps: 7, emitida_em: "2026-07-01T25:00:00Z" });
+      upsertVenda({ id_venda: "venda-xml", valor: 30, status: "emitida" });
+      registrarNota({ chave_acesso: CHAVE_E, ndps: 5, id_venda: "venda-xml", emitida_em: "2026-07-04T15:00:00Z" });
+      await mkdir(join(outputDir, "autorizacao"), { recursive: true });
+      await gravarXml(outputDir, {
+        chave: CHAVE_E,
+        nNFSe: "5",
+        dCompet: "2026-13-10",
+        xNome: "Tomador Sintético",
+        doc: "<CPF>11144477735</CPF>",
+        vServ: "999.00",
+      });
+    },
+  );
+});
+
+/** Notas sem XML em 2026-07, uma por valor de Venda. */
+function seValores(...valores: number[]) {
+  return async (dbPath: string): Promise<void> => {
+    initDb(dbPath);
+    valores.forEach((valor, i) => {
+      nota(`venda-${i}`, String(i + 1).repeat(50), i + 1, `2026-07-0${i + 1}T15:00:00.000Z`, valor, "Venda", "52998224725");
+    });
+  };
+}
+
+test("cada valor é arredondado uma vez e o total soma o que as linhas mostram", async () => {
+  await comNotas(async ({ base }) => {
+    const { body } = await json(`${base}/api/notas?competencia=2026-07`);
+
+    assert.deepEqual(body.notas.map((n: any) => n.valor), [1.01, 2.01]);
+    assert.equal(body.total, 3.02);
+  }, seValores(1.005, 2.005));
+});
+
+test("valor não finito é tratado como ausente e não zera o mês", async () => {
+  await comNotas(async ({ base }) => {
+    const { body } = await json(`${base}/api/notas?competencia=2026-07`);
+
+    assert.deepEqual(body.notas.map((n: any) => n.valor), [null, 10, -0.13]);
+    assert.equal(body.total, 9.87);
+  }, seValores(9e999, 10, -0.125));
+});
+
+test("valor que não dá para arredondar fica de fora e é avisado; resíduo de float vale zero", async () => {
+  await comNotas(async ({ base }) => {
+    const avisos = await comAvisos(async () => {
+      const { status, body } = await json(`${base}/api/notas?competencia=2026-07`);
+
+      assert.equal(status, 200);
+      assert.deepEqual(body.notas.map((n: any) => n.valor), [null, 10, 0]);
+      assert.equal(body.total, 10);
+    });
+    assert.deepEqual(avisos, ["[notas] valor da Venda inutilizável, nDPS 1"]);
+  }, seValores(1e20, 10, 0.1 + 0.2 - 0.3));
+});
+
+test("trava curta de quem grava não derruba a leitura", async () => {
+  await comNotas(async ({ base, dbPath }) => {
+    initDb(":memory:");
+    // Em outra thread: a espera do SQLite é síncrona e prenderia quem solta a trava.
+    const escritor = new Worker(
+      `const { parentPort, workerData } = require("node:worker_threads");
+      const { DatabaseSync } = require("node:sqlite");
+      const db = new DatabaseSync(workerData);
+      db.exec("PRAGMA journal_mode=DELETE; BEGIN EXCLUSIVE");
+      parentPort.postMessage("travado");
+      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 1500);
+      db.exec("COMMIT");
+      db.close();`,
+      { eval: true, workerData: dbPath },
+    );
+    const fim = once(escritor, "exit");
+    await once(escritor, "message");
+
+    const { status, body } = await json(`${base}/api/notas?competencia=2026-08`);
+    await fim;
+
+    assert.equal(status, 200);
+    assert.equal(body.total, 10);
+  });
+});
+
+test("pasta no lugar do XML ou do PDF não conta como arquivo", async () => {
+  await comNotas(async ({ base, outputDir }) => {
+    await mkdir(join(outputDir, "autorizacao", `${CHAVE_C}.xml`));
+    await mkdir(join(outputDir, `danfse-${CHAVE_C}.pdf`));
+
+    const { body } = await json(`${base}/api/notas?competencia=2026-10`);
+
+    assert.equal(body.notas[0].temXml, false);
+    assert.equal(body.notas[0].temPdf, false);
+    assert.equal(body.notas[0].valor, 300.05);
+  });
+});
+
+test("sair do Fechamento invalida o pedido em andamento", () => {
+  const html = readFileSync(new URL("./painel.html", import.meta.url), "utf8");
+  assert.match(html, /if \(atual === 'fechamento'\) carregarFechamento\(\);\s*else pedidoFechamento\+\+;/);
+  assert.match(html, /buscarJson\('\/api\/notas\/competencias'\);\s*if \(pedido !== pedidoFechamento\) return;/);
 });
 
 test("o Fechamento monta as linhas sem concatenar HTML", () => {

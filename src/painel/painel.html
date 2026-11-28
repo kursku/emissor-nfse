@@ -307,7 +307,9 @@ function mostrarSecao() {
     else a.removeAttribute('aria-current');
   });
   document.querySelectorAll('section[data-secao]').forEach(s => { s.hidden = s.dataset.secao !== atual; });
+  // Fora do Fechamento, a resposta que chegar depois não pode mexer na URL nem pedir o mês.
   if (atual === 'fechamento') carregarFechamento();
+  else pedidoFechamento++;
 }
 document.querySelectorAll('nav a[data-secao]').forEach(a => {
   a.addEventListener('click', e => {
@@ -397,7 +399,7 @@ function linhaDaNota(nota) {
     const selo = document.createElement('span');
     selo.className = 'estimada';
     selo.textContent = 'competência estimada';
-    selo.title = 'Sem XML autorizado legível: mês da data de emissão e dados da Venda';
+    selo.title = 'Sem XML autorizado legível: mês da data de emissão (ou da Venda) e dados da Venda';
     emissao.append(document.createElement('br'), selo);
   }
   const valor = celula(nota.valor == null ? '—' : brl.format(nota.valor), 'valor');
