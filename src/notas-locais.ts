@@ -66,15 +66,20 @@ async function nomeDoTomador(xml: string): Promise<string | null> {
   return typeof nome === 'string' ? nome.trim() || null : null;
 }
 
+// Date.UTC rola 30/02 para março: a data só é real se sobreviver à conversão.
+function dataReal(ano: string, mes: string, dia: string): boolean {
+  return new Date(Date.UTC(+ano, +mes - 1, +dia)).toISOString().startsWith(`${ano}-${mes}-${dia}`);
+}
+
 /** O parser do DANFSe devolve texto formatado para impressão; aqui volta a ser dado. */
 async function lerCamposDoXml(xml: string, chave: string): Promise<CamposDoXml> {
   const dados = await parseDanfse(xml);
   if (dados.chaveAcesso !== chave) throw new Error('chave do XML diverge da Nota');
-  const data = /^\d{2}\/(0[1-9]|1[0-2])\/(\d{4})$/.exec(dados.dCompet);
-  if (!data) throw new Error('dCompet ausente ou inválida');
+  const data = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(dados.dCompet);
+  if (!data || !dataReal(data[3], data[2], data[1])) throw new Error('dCompet ausente ou inválida');
   return {
     nNFSe: dados.nNFSe,
-    competencia: `${data[2]}-${data[1]}`,
+    competencia: `${data[3]}-${data[2]}`,
     // XML sem <toma> é válido.
     // O xml2js é mais estrito que o parser do DANFSe: se recusar, só o nome degrada.
     tomador: await nomeDoTomador(xml).catch((err: unknown) => {
@@ -116,10 +121,8 @@ function mesDeEmissao(data: string | null, coluna: 'emitida_em' | 'data_venda', 
   const partes = DATA_ISO.exec(data);
   if (partes) {
     const [, ano, mes, dia, hora] = partes;
-    // Date.UTC rola 30/02 para março: a data só é real se sobreviver à conversão.
-    const real = new Date(Date.UTC(+ano, +mes - 1, +dia)).toISOString().startsWith(`${ano}-${mes}-${dia}`);
     const instante = new Date(data);
-    if (real && !Number.isNaN(instante.getTime())) {
+    if (dataReal(ano, mes, dia) && !Number.isNaN(instante.getTime())) {
       return hora ? momentoSP(instante).dCompet.slice(0, 7) : `${ano}-${mes}`;
     }
   }

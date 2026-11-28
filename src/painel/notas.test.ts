@@ -581,6 +581,39 @@ test("data que não é ISO real nunca vira competência nem é adivinhada", asyn
   );
 });
 
+test("dCompet com dia que não existe no calendário cai para a Venda, como estimada", async () => {
+  await comNotas(
+    async ({ base }) => {
+      const avisos = await comAvisos(async () => {
+        assert.deepEqual((await json(`${base}/api/notas/competencias`)).body, [
+          { competencia: "2026-07", total: 30, quantidade: 2, estimada: true },
+        ]);
+      });
+      const { body } = await json(`${base}/api/notas?competencia=2026-07`);
+      assert.deepEqual(
+        body.notas.map((n: any) => [n.ndps, n.competenciaEstimada, n.valor, n.temXml]),
+        [
+          [1, true, 10, true],
+          [2, true, 20, true],
+        ],
+      );
+      for (const chave of [CHAVE_A, CHAVE_B]) {
+        assert.ok(avisos.some((aviso) => aviso.includes("dCompet") && aviso.includes(chave)), chave);
+      }
+    },
+    async (dbPath, outputDir) => {
+      initDb(dbPath);
+      nota("venda-iso", CHAVE_A, 1, "2026-07-05T15:00:00.000Z", 10, "Venda", "52998224725");
+      nota("venda-br", CHAVE_B, 2, "2026-07-06T15:00:00.000Z", 20, "Venda", "52998224725");
+      await mkdir(join(outputDir, "autorizacao"), { recursive: true });
+      const comuns = { xNome: "Tomador Sintético", doc: "<CPF>11144477735</CPF>", vServ: "999.00" };
+      await gravarXml(outputDir, { ...comuns, chave: CHAVE_A, nNFSe: "1", dCompet: "2026-02-30" });
+      // Fora do ISO o parser do DANFSe devolve o texto como veio.
+      await gravarXml(outputDir, { ...comuns, chave: CHAVE_B, nNFSe: "2", dCompet: "31/02/2026" });
+    },
+  );
+});
+
 /** Notas sem XML em 2026-07, uma por valor de Venda. */
 function seValores(...valores: number[]) {
   return async (dbPath: string): Promise<void> => {
